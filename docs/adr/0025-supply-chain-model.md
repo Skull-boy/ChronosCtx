@@ -1,0 +1,79 @@
+# ADR-0025 — Supply-chain model and the Phase 0 swap decisions
+
+- **Status:** Accepted (Phase 0, 2026-11-16); swap decisions recorded from measurement
+- **Related:** roadmap §3.5, gates 0.11–0.12, 1.17–1.18, 6.15–6.19; delta C16 and C17
+- **Evidence:** `bench/results/supplychain.json`, `bench/results/win32-swap.json`; `docs/phase0/REPORT.md` §6–§7
+
+## Context
+
+Two questions were open entering Phase 0.
+
+1. **Does the supply-chain model hold when measured?** v1.2 asserted "the user's install resolves nothing and executes nothing", a 72-hour cooldown, and a dependency budget of ≤ 8 direct / ≤ 25 transitive. Those were estimates.
+2. **Which Tier-2 swaps are worth making?** v1.2 listed `fastify`, `pino`, `execa`, `chokidar`, `@clack/prompts`, `picocolors`, and `ulid` as candidates with guessed package counts, and deferred the decision to a benchmark that did not yet exist.
+
+## Measurements
+
+### Install contract (gate 0.11) — PASS
+
+| Test | Result |
+| --- | --- |
+| Clean platform tarball, installed normally | 1 package, 0 transitive, 0 declared lifecycle scripts, 2.7 s |
+| Hostile tarball (declares `postinstall`), installed with `.npmrc` `ignore-scripts=true` | postinstall **did not execute** |
+| Same hostile tarball, no policy (negative control) | postinstall **did execute** |
+
+The third row is what makes the second row evidence: the sentinel mechanism is proven to work, so its absence under policy is a real suppression rather than a broken test.
+
+### Package closures (npm 10, `--ignore-scripts`, exact versions as resolved)
+
+| Package | Total | Transitive | Packages with lifecycle scripts |
+| --- | --- | --- | --- |
+| `@modelcontextprotocol/sdk@1` | 92 | 91 | 6 |
+| `fastify@5` + `@fastify/cors@11` | 50 | 48 | 4 |
+| `execa@9` | 23 | 22 | 1 |
+| `@libsql/client` | 14 | 13 | 0 |
+| `pino@9` | 13 | 12 | 2 |
+| `@clack/prompts@0.10` | 4 | 3 | 0 |
+| `chokidar@4` | 2 | 1 | 0 |
+| `commander@14`, `drizzle-orm`, `zod@4`, `picocolors`, `ulid` | 1 each | 0 | 0 |
+
+v1.2 estimated ~35 for Fastify and ~10 for execa. Measured: **50** and **23**. The diet is worth more than the document claimed, and the ≤ 25-transitive build budget is impossible: the MCP SDK alone is 92.
+
+### Swap measurements (gate 0.12)
+
+| Candidate | Measured | Verdict |
+| --- | --- | --- |
+| `execa` → `node:child_process` | spawnSync 82.9 ms vs execa 105.5 ms p50 — execa is **26.5 % slower** | Adopt the wrapper |
+| `fastify` → `node:http` | HTTP p95 1.15 vs 1.19 ms; boot **27.6 ms vs 768.8 ms** | Adopt `node:http` |
+| `pino` → NDJSON writer | 20,000 records: **61 ms vs 274 ms** | Adopt the writer |
+| `picocolors` → `node:util.styleText` | 100k calls 15.6 vs 256 ms = **2.56 µs/call** | Adopt (off the hot path) |
+| `@clack/prompts` → `node:readline/promises` | not latency-gated (interactive) | Adopt on effort |
+| `chokidar` → `fs.watch` | not latency-gated (correctness) | **Keep** |
+| `ulid` → in-house | n/a | Adopt |
+
+## Decision
+
+1. **Keep the install-time model exactly as specified**, and treat it as the primary user-facing guarantee: 1 package, 0 transitive, 0 lifecycle scripts, verified by a hostile-package control in CI, not by trusting `--ignore-scripts`.
+2. **Split the dependency budget** into install-time (hard, above) and build-time (≤ 8 direct, transitively **ratcheted**: a PR that increases the resolved count must include an ADR amendment). The ≤ 25 figure is retired as unreachable with the official MCP SDK.
+3. **Adopt four swaps** (`node:http`, NDJSON writer, `node:child_process` wrapper, `readline`+`styleText`) and the in-house ULID.
+4. **Keep `chokidar`.** ADR-0026 makes the watcher load-bearing for incremental checkpointing; 2 packages is cheap insurance for atomic-write and rename handling.
+5. **Amend the decision rule**: a swap is adopted when the four gated metrics show ≤ 10 % regression **and** the candidate is not on a measured hot path; the absolute cost is recorded either way. `util.styleText` is 16× slower than `picocolors` per call and still correct to adopt, because 2.56 µs is unobservable and the package count is 1.
+
+## Alternatives considered
+
+- **Keep Fastify for its ecosystem** (schema compilation, plugins, hardening). Rejected: the daemon is a small, private, schema-validated surface; the 741 ms cold-start difference is paid on every harness start, while the plugins we would use are already ours (zod validation, `Host`/`Origin` guard).
+- **Keep pino for structured logging maturity.** Rejected: serializers, transports, and rotation are unused; the NDJSON writer is ~50 lines and 4.5× faster on the measured workload.
+- **Keep execa for `get-stream`/`strip-final-newline` conveniences.** Rejected: measured slower, and the wrapper is already the plan for deterministic `argv` handling.
+- **Drop chokidar too.** Rejected: it would make correctness depend on hand-rolled atomic-rename handling, which is precisely the failure mode the roadmap names in R3-adjacent risk. Two packages buy that.
+- **Raise the build budget to 150 to accommodate the MCP SDK.** Rejected: it hides the real shape of the graph and invites further growth. A ratchet is a stronger control than a larger number.
+
+## Consequences
+
+- Shipped tree: 1 package, 0 transitive, 0 scripts — unchanged and now proven with a control.
+- Build graph: ~120 resolved packages, dominated by the MCP SDK (92) and libsql (14); recorded, ratcheted, and irrelevant to the user because the artifact is bundled.
+- `shared-types` stays at zero runtime dependencies.
+- Four fewer first-party dependencies to track for advisories; the 72-hour SLA applies to a smaller set.
+- The `node:http` swap means we own the router, CORS handling, and body limits. That code is covered by gate 2.x integration tests and by the `Host`/`Origin` tests that already existed.
+
+## Verification
+
+Gate 0.11 (install contract with control), gate 0.12 (swap numbers), gates 6.15–6.19 (enforced at release). Raw data: `bench/results/supplychain.json`, `bench/results/win32-swap.json`. Reproduction in `docs/phase0/METHOD.md` §7.

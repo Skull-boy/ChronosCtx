@@ -1,0 +1,15 @@
+# Normalise on commit, checkout as LF everywhere. Windows checkouts with
+# core.autocrlf=true otherwise store CRLF in blobs, which makes every diff noisy
+# and defeats the cross-OS determinism argument in docs/phase0/REPORT.md §4.
+* text=auto eol=lf
+
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.woff binary
+*.woff2 binary
+*.zip binary
+*.gz binary
+*.exe binary

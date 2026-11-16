@@ -1,0 +1,7 @@
+﻿node_modules/
+bench/.work/
+bench/.deps/
+bench/fixtures/
+bench/results/
+docs/phase0/*.tmp
+*.log

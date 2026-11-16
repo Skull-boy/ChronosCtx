@@ -1,0 +1,28 @@
+{
+  "name": "chronos-ctx-phase0",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Phase 0 feasibility spike for ChronosCtx: measurement harness and report. Not product code.",
+  "license": "Apache-2.0",
+  "engines": {
+    "node": ">=22.15"
+  },
+  "scripts": {
+    "bench:checkpoint": "node bench/checkpoint.mjs --files 2000",
+    "bench:checkpoint:20k": "node bench/checkpoint.mjs --files 20000 --quick",
+    "bench:manifest": "node bench/manifest.mjs --files 2000",
+    "bench:rewind": "node bench/rewind.mjs --files 2000",
+    "bench:determinism": "node bench/determinism.mjs",
+    "bench:alternates": "node bench/alternates.mjs",
+    "bench:tokens": "node bench/tokens.mjs",
+    "bench:adapter": "node bench/adapter.mjs",
+    "bench:supplychain": "node bench/supplychain.mjs",
+    "bench:swap": "node bench/swap.mjs",
+    "summary": "node bench/summary.mjs"
+  },
+  "devDependencies": {
+    "js-tiktoken": "1.0.21",
+    "jsdom": "29.1.1"
+  }
+}
