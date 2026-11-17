@@ -146,6 +146,11 @@ export interface ListHeadsOptions {
   limit?: number;
 }
 
+export interface HeadSummary extends NodeHead {
+  title: string;
+  summary: string;
+}
+
 export async function listHeads(
   sql: Sql,
   projectId: string,
@@ -165,6 +170,27 @@ export async function listHeads(
   }
   const result = await sql.execute({ sql: sqlText, args });
   return result.rows.map(toHead);
+}
+
+export async function listHeadSummaries(
+  sql: Sql,
+  projectId: string,
+  branch: string,
+): Promise<HeadSummary[]> {
+  const result = await sql.execute({
+    sql: `SELECT n.id, n.project_id, n.branch, n.path, n.head_version_id, n.version,
+                 n.status, n.updated_at, v.title, v.summary
+            FROM state_nodes n
+            JOIN node_versions v ON v.version_id = n.head_version_id
+           WHERE n.project_id = ? AND n.branch = ?
+           ORDER BY n.path ASC`,
+    args: [projectId, branch],
+  });
+  return result.rows.map((row) => ({
+    ...toHead(row),
+    title: text(row, "title"),
+    summary: text(row, "summary"),
+  }));
 }
 
 export async function maxVersionNumber(

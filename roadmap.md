@@ -2207,28 +2207,28 @@ Phase 0 output: `docs/phase0/REPORT.md` (verdict + numbers) and `docs/phase0/MET
 - [ ] `verification_events` writer with `tree_hash`, `snapshot_hash`, `covered_paths[]`, redaction, 2 KB log cap.
 - [x] `epistemic/freshness.ts`: computed `fresh`/`stale`/`unknown` from current tree vs. evidence tree vs. covered paths; unit + property tests.
 - [x] `EVIDENCE_REQUIRED` for `verified`; `EVIDENCE_STALE` for content changes; web surfaces force `unverified`; content mutation demotes.
-- [ ] `deprecated` excluded from boot index, retrievable by path with warning.
+- [x] `deprecated` excluded from boot index, retrievable by path with warning.
 - [ ] Invariant property test: 10k random commit sequences produce zero unevidenced `verified` heads and zero false-`fresh` nodes.
 
 #### 1.5 Negative constraints (C8)
 - [ ] `flag_dead_end` core with branch-inclusive dedupe key, `occurrences++`, `evidence_kind`, severity default `caution`.
 - [ ] Agent-supplied `blocking` downgraded unless evidence or human/CI promotion; `constraints promote` CLI.
-- [ ] Attachment scopes: node, branch-global, project-global; inheritance into boot + page_in.
-- [ ] Constraint rendering is compact (`DO NOT: … → why`) and respects the 5-item / 10-item caps.
+- [x] Attachment scopes: node, branch-global, project-global; inheritance into boot + page_in.
+- [x] Constraint rendering is compact (`DO NOT: … → why`) and respects the 5-item / 10-item caps.
 
 #### 1.6 Graph edges (C3)
-- [ ] `node_edges` repo + validation (self-edges rejected, unknown rels rejected, path grammar enforced).
-- [ ] One-hop neighbor expansion in `page_in` (`expand`), summaries only, max 3 rels.
+- [x] `node_edges` repo + validation (self-edges rejected, unknown rels rejected, path grammar enforced).
+- [x] One-hop neighbor expansion in `page_in` (`expand`), summaries only, max 3 rels.
 - [ ] `chronos graph --from <path> --rel depends_on --depth 2` CLI output.
 - [ ] Edge integrity test: rename a path → edges report `EDGE_ORPHANED` rather than silently dangling.
 
 #### 1.7 Pager, budgets, and tool surface
-- [ ] `index-builder.ts`: flat/grouped/auto index with per-entry token accounting; ≤ 200 tokens hard cap.
-- [ ] `page-in.ts`: resolve aliases, pin versions, enforce total + per-node budgets, deterministic truncation, `missing[]` with suggestions, mandatory freshness markers.
-- [ ] `budget.ts`: content + envelope + schema accounting; `tokens.{content,envelope,schema,total}` in every response.
-- [ ] `token-surface.ts`: measure the 7-tool surface; gate at ≤ 1,200 hard, ≤ 900 target; lean 4-tool profile.
+- [x] `index-builder.ts`: flat/grouped/auto index with per-entry token accounting; ≤ 200 tokens hard cap.
+- [x] `page-in.ts`: resolve aliases, pin versions, enforce total + per-node budgets, deterministic truncation, `missing[]` with suggestions, mandatory freshness markers.
+- [x] `budget.ts`: content + envelope + schema accounting; `tokens.{content,envelope,schema,total}` in every response.
+- [x] `token-surface.ts`: measure the 7-tool surface; gate at ≤ 1,200 hard, ≤ 900 target; lean 4-tool profile.
 - [ ] `page_out`/eviction hints emitted after commit; `suggest_evict` from edge reachability; no server-side session state required.
-- [ ] Budget tests: 300-node fixture boots at ≤ 150 tokens; 12-path request never exceeds `max_tokens`; envelope counted.
+- [x] Budget tests: 300-node fixture boots at ≤ 150 tokens; 12-path request never exceeds `max_tokens`; envelope counted.
 
 #### 1.8 Snapshots, dedupe, capsules (C5)
 - [x] Two identities per §4.2.1: `snapshot_hash` over sorted `path\0version_id` (local) and `content_root` over sorted `path\0content_hash` (portable); `snapshots` table with `UNIQUE(project_id, snapshot_hash, kind)`, `idx_snap_content`, and `ON CONFLICT DO NOTHING`.

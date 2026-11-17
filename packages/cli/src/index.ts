@@ -1,6 +1,15 @@
 #!/usr/bin/env node
 import { readFileSync } from "node:fs";
-import { countCheckpoints, openEngine } from "@chronos-ctx/core-engine";
+import {
+  BootService,
+  countCheckpoints,
+  type Engine,
+  getProjectById,
+  measureSurface,
+  openEngine,
+  PageInService,
+  type Project,
+} from "@chronos-ctx/core-engine";
 import { ChronosError, toToolErrorBody } from "@chronos-ctx/shared-types";
 import { Command } from "commander";
 
@@ -27,6 +36,16 @@ function report(error: unknown): void {
     return;
   }
   process.stderr.write(`chronos: ${error instanceof Error ? error.message : String(error)}\n`);
+}
+
+async function projectByRef(engine: Engine, reference: string): Promise<Project> {
+  const project = reference.startsWith("prj_")
+    ? await getProjectById(engine.db, reference)
+    : await engine.projects.bySlug(reference);
+  if (project === null) {
+    throw new ChronosError("PROJECT_NOT_FOUND", `project "${reference}" does not exist`);
+  }
+  return project;
 }
 
 const program = new Command();
@@ -170,6 +189,118 @@ program
     } finally {
       engine.close();
     }
+  });
+
+program
+  .command("boot <project>")
+  .description("print the bounded boot index")
+  .option("-b, --branch <branch>", "branch name")
+  .option("--max-tokens <n>", "token budget", (value: string) => Number(value))
+  .option("--summaries", "include node summaries", false)
+  .option("--json", "machine-readable output", false)
+  .action(
+    async (
+      reference: string,
+      options: { branch?: string; maxTokens?: number; summaries: boolean; json: boolean },
+    ) => {
+      const engine = await openEngine();
+      try {
+        const project = await projectByRef(engine, reference);
+        const boot = new BootService({ db: engine.db });
+        const result = await boot.boot({
+          projectId: project.id,
+          ...(options.branch === undefined ? {} : { branch: options.branch }),
+          ...(options.maxTokens === undefined ? {} : { maxTokens: options.maxTokens }),
+          includeSummaries: options.summaries,
+        });
+        if (options.json) {
+          process.stdout.write(`${JSON.stringify({ ok: true, ...result }, null, 2)}\n`);
+        } else {
+          process.stdout.write(`${result.text}\n`);
+        }
+      } finally {
+        engine.close();
+      }
+    },
+  );
+
+program
+  .command("page-in <project>")
+  .description("page in node detail within a token budget")
+  .option("-b, --branch <branch>", "branch name")
+  .option("-p, --path <paths...>", "node paths (space separated)")
+  .option("--max-tokens <n>", "token budget", (value: string) => Number(value))
+  .option("--format <format>", "markdown or json", "markdown")
+  .option("--json", "machine-readable output", false)
+  .action(
+    async (
+      reference: string,
+      options: {
+        branch?: string;
+        path?: string[];
+        maxTokens?: number;
+        format: string;
+        json: boolean;
+      },
+    ) => {
+      if (options.path === undefined || options.path.length === 0) {
+        throw new ChronosError("PATH_INVALID", "page-in requires at least one --path");
+      }
+      const engine = await openEngine();
+      try {
+        const project = await projectByRef(engine, reference);
+        const pager = new PageInService({ db: engine.db });
+        const result = await pager.pageIn({
+          projectId: project.id,
+          paths: options.path,
+          ...(options.branch === undefined ? {} : { branch: options.branch }),
+          ...(options.maxTokens === undefined ? {} : { maxTokens: options.maxTokens }),
+          format: options.format === "json" ? "json" : "markdown",
+        });
+        if (options.json) {
+          process.stdout.write(`${JSON.stringify({ ok: true, ...result }, null, 2)}\n`);
+        } else {
+          process.stdout.write(`${result.text}\n`);
+        }
+      } finally {
+        engine.close();
+      }
+    },
+  );
+
+program
+  .command("surface")
+  .description("measure the MCP tool surface against the token budget")
+  .option("--profile <profile>", "full or lean", "full")
+  .option("--json", "machine-readable output", false)
+  .action((options: { profile: string; json: boolean }) => {
+    if (options.profile !== "full" && options.profile !== "lean") {
+      throw new ChronosError("UNSUPPORTED", `unknown profile "${options.profile}"`);
+    }
+    const measurement = measureSurface(options.profile);
+    if (options.json) {
+      process.stdout.write(`${JSON.stringify({ ok: true, ...measurement }, null, 2)}\n`);
+      return;
+    }
+    process.stdout.write(
+      `profile ${measurement.profile}: ${measurement.tools} tools, ${measurement.total_tokens} tokens\n`,
+    );
+    process.stdout.write(
+      `  instructions ${measurement.instructions_tokens} · schemas ${measurement.schema_tokens}\n`,
+    );
+    process.stdout.write(
+      `  target ${measurement.target} · hard ${measurement.hard_cap} · lean ${measurement.lean_cap}\n`,
+    );
+    for (const tool of measurement.per_tool) {
+      process.stdout.write(`  ${tool.name}  ${tool.tokens}\n`);
+    }
+    const verdict = measurement.within_target
+      ? "within target"
+      : measurement.within_hard
+        ? "within hard cap"
+        : "OVER HARD CAP";
+    process.stdout.write(`  ${verdict}\n`);
+    if (!measurement.within_hard) process.exitCode = 1;
   });
 
 program

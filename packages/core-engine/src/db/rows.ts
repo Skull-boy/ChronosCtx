@@ -43,6 +43,15 @@ export function nullableInteger(row: Row, column: string): number | null {
   return value;
 }
 
+export function real(row: Row, column: string): number {
+  const value = row[column];
+  if (typeof value === "bigint") return Number(value);
+  if (typeof value !== "number") {
+    throw new TypeError(`column ${column} is not a number (got ${typeof value})`);
+  }
+  return value;
+}
+
 export function blob(row: Row, column: string): Uint8Array {
   const value: unknown = row[column];
   if (value instanceof Uint8Array) return value;

@@ -11,8 +11,16 @@ export * from "./engine.js";
 export * from "./epistemic/freshness.js";
 export * from "./epistemic/gate.js";
 
+export * from "./paging/boot.js";
+export * from "./paging/budget.js";
+export * from "./paging/envelope.js";
+export * from "./paging/index-builder.js";
+export * from "./paging/page-in.js";
+export * from "./paging/tools.js";
 export * from "./repositories/branches.js";
 export * from "./repositories/checkpoints.js";
+export * from "./repositories/constraints.js";
+export * from "./repositories/edges.js";
 export * from "./repositories/nodes.js";
 export * from "./repositories/projects.js";
 export * from "./repositories/snapshots.js";

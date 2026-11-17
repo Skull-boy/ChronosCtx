@@ -68,6 +68,15 @@ Phase 0 built one rig per question and ran it on two hosts. These are the number
 | Published artifact install | **1 package, 0 transitive, 0 lifecycle scripts** |
 | `node:http` boot vs Fastify | **27.6 ms vs 768.8 ms** |
 
+### Read path (Phase 1)
+
+| Measure | Result |
+| --- | ---: |
+| Boot index, 300 nodes, counts-only | **≤ 150 tokens** (109 in the reference run: 64 content + 45 envelope) |
+| Seven-tool reduced surface | **834 tokens** (target 900, hard 1,200) |
+| Lean four-tool surface | **507 tokens** (cap 600) |
+| `page_in`, 12 paths | **≤ 1,200 total**, envelope and schema share included |
+
 **Reading the numbers.** Windows figures are host-bound: real-time scanning and per-process cost dominate them, so the harness publishes a spawn floor beside every series. The cache-adjusted paging figure is negative because prompt caching reverses the raw saving, and both are always reported together. The token figures are measured against the actual schemas and fixtures; the paging model is an 8-turn scenario documented in the method.
 
 Full method, hosts, confounds, and every gate: [`docs/phase0/REPORT.md`](docs/phase0/REPORT.md) · [`docs/phase0/METHOD.md`](docs/phase0/METHOD.md).
@@ -85,20 +94,20 @@ Full method, hosts, confounds, and every gate: [`docs/phase0/REPORT.md`](docs/ph
 | Epistemic gate, evidence rules, tree-bound freshness | ✅ |
 | Snapshots, dedupe, state-only checkpoints | ✅ |
 | CLI (`migrate`, `doctor`, `project`, `stats`) | ✅ |
-| Pager, boot index, tool-surface budget | next |
+| Pager, boot index, tool-surface budget | ✅ |
 | Capsule v1 and render hash | next |
 | Daemon, loopback security, filesystem probe | next |
 | MCP surface, shadow git, rewind, forks | Phase 2 |
 
-Phase 1 has **9 of 18 gates** implemented. The gate runner is authoritative, and pending gates fail the run on purpose:
+Phase 1 has **12 of 18 gates** implemented. The gate runner is authoritative, and pending gates fail the run on purpose:
 
 ```bash
 node scripts/verify-phase.mjs --phase 0    # 2/2
-node scripts/verify-phase.mjs --phase 1    # 9/18 today
+node scripts/verify-phase.mjs --phase 1    # 12/18 today
 node scripts/verify-phase.mjs --list
 ```
 
-126 unit and property tests currently pass, including 1,000 randomized fork/commit interleavings, 200-checkpoint dedupe, and 5,000 generated freshness histories.
+166 unit and property tests currently pass, including 1,000 randomized fork/commit interleavings, 200-checkpoint dedupe, 5,000 generated freshness histories, and a measured 300-node boot index.
 
 ## Quickstart
 
@@ -141,6 +150,9 @@ $env:PATH = "$PWD\.tools\bin;$env:PATH"
 node packages/cli/dist/index.js migrate --check       # exit 1 if anything is pending
 node packages/cli/dist/index.js project create toy-api -n "Toy API"
 node packages/cli/dist/index.js project fork toy-api redis-rate-limit
+node packages/cli/dist/index.js boot toy-api         # bounded index
+node packages/cli/dist/index.js page-in toy-api --path auth/jwt-spec db/schema
+node packages/cli/dist/index.js surface --profile full
 node packages/cli/dist/index.js stats --dedupe        # checkpoints vs snapshot rows
 ```
 

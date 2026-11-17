@@ -6,5 +6,5 @@
     "resolveJsonModule": true
   },
   "include": ["src/**/*.ts", "src/**/*.sql"],
-  "exclude": ["src/**/*.test.ts"]
+  "exclude": ["src/**/*.test.ts", "src/**/*.fixture.ts"]
 }

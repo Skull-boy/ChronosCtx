@@ -27,7 +27,7 @@
    | tool surface | 900 | 1,200 |
    | MCP instructions | 300 | 400 |
 
-2. **Every response accounts for three components separately:** `tokens.content`, `tokens.envelope`, `tokens.schema`, and their sum `tokens.total`. The envelope is not free and is never excluded from the budget.
+2. **Every response accounts for three components separately:** `tokens.content`, `tokens.envelope`, `tokens.schema`, and their sum `tokens.total`. The envelope is not free and is never excluded from the budget. `context_page_in`'s wire default is **1,200** (its hard cap) because a caller that omits `max_tokens` expects a full page; the 800 figure is the soft target a harness should prefer.
 3. **The default estimator is `chars4`** (`ceil(character count / 4)`), tagged in every response. A real tokenizer reports `cl100k_base` when one is registered. Mixing estimators within one response is a bug.
 4. **Truncation is deterministic and loud.** `context_page_in` drops whole nodes from the tail of `paths` in request order, then cuts the final node at a sentence boundary. Every truncated response carries `truncated: true` and `omitted_tokens`; silent truncation is a test failure.
 5. **Markers are never truncated.** Status and freshness delimiters survive budget pressure; if a node cannot carry its marker, the node is dropped instead.
