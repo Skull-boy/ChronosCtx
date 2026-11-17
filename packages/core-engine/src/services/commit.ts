@@ -2,7 +2,6 @@ import {
   ChronosError,
   type Clock,
   type IdGenerator,
-  isWebSurface,
   type NodeStatus,
   type SourceSurface,
   validatePath,
@@ -12,6 +11,7 @@ import { contentHash } from "../content/hash.js";
 import type { Database } from "../db/client.js";
 import type { Sql } from "../db/sql.js";
 import { inspectNodeSize, validateNodeShape } from "../domain/node.js";
+import { decideStatus, type EvidenceView } from "../epistemic/gate.js";
 import { assertWritable } from "../repositories/branches.js";
 import {
   deleteHead,
@@ -25,22 +25,14 @@ import {
   resolveAlias,
   upsertHead,
 } from "../repositories/nodes.js";
-import { getVerificationEvent, type VerificationKind } from "../repositories/verification.js";
+import { getVerificationEvent } from "../repositories/verification.js";
 
 /**
- * D1 + the epistemic gate at the write boundary.
+ * D1 at the write boundary.
  *
- * Everything that decides `status`, allocates a version or moves a head lives
- * here, inside one `BEGIN IMMEDIATE` transaction. No repository writes status on
- * its own.
+ * This service owns version allocation and the transaction; the status decision
+ * itself belongs to `epistemic/gate.ts` and is not duplicated here.
  */
-
-const PROMOTING_KINDS: ReadonlySet<VerificationKind> = new Set<VerificationKind>([
-  "test_pass",
-  "build_pass",
-  "typecheck_pass",
-  "user_approval",
-]);
 
 export interface CommitInput {
   projectId: string;
@@ -111,30 +103,7 @@ export class CommitService {
     const size = inspectNodeSize(input, path);
     const warnings: Warning[] = size.warning === undefined ? [] : [size.warning];
     const now = this.clock.now();
-
     const requested = input.requestedStatus ?? "unverified";
-    const web = isWebSurface(input.sourceSurface);
-
-    if (requested === "verified") {
-      if (web) {
-        throw new ChronosError(
-          "EVIDENCE_REQUIRED",
-          `surface "${input.sourceSurface}" cannot promote a node to verified`,
-          {
-            hint: "Verified state requires evidence from a local harness or an explicit approval.",
-          },
-        );
-      }
-      if (input.verificationEventId === undefined || input.verificationEventId === null) {
-        throw new ChronosError(
-          "EVIDENCE_REQUIRED",
-          "status=verified requires verification evidence",
-          {
-            hint: "Run a check and pass verification_event_id, or commit with status=unverified.",
-          },
-        );
-      }
-    }
 
     const hash = contentHash({
       title: input.title,
@@ -171,9 +140,7 @@ export class CommitService {
           throw new ChronosError(
             "NODE_NOT_FOUND",
             `cannot rename "${fromPath}": it does not exist`,
-            {
-              details: { path: fromPath },
-            },
+            { details: { path: fromPath } },
           );
         }
         if (previousHead !== null && previousHead.path !== fromPath) {
@@ -208,60 +175,32 @@ export class CommitService {
         );
       }
 
-      const changed = previousVersion === null || previousVersion.contentHash !== hash;
-      let status: NodeStatus;
-      let newEvidenceTreeHash: string | null = null;
+      const evidence =
+        requested === "verified" && input.verificationEventId
+          ? await this.loadEvidence(tx, input.projectId, input.verificationEventId)
+          : null;
 
-      if (requested === "deprecated") {
-        status = "deprecated";
-      } else if (requested === "verified") {
-        const event = await this.requirePromotingEvent(
-          tx,
-          input.projectId,
-          input.verificationEventId as string,
-        );
-        if (
-          previousVersion !== null &&
-          changed &&
-          event.createdAt <= previousVersion.createdAt &&
-          input.allowAgentOverride !== true
-        ) {
-          throw new ChronosError(
-            "EVIDENCE_STALE",
-            "content changed but the supplied evidence predates the previous version",
-            {
-              hint: "Re-run the check so the evidence is bound to the new content, or commit as unverified.",
-              details: { verification_event_id: event.id },
-            },
-          );
-        }
-        newEvidenceTreeHash = event.treeHash;
-        status = "verified";
-      } else {
-        // Identical text re-committed (same content_hash) keeps trust; any
-        // text change — including a title or summary edit — demotes.
-        status =
-          previousVersion !== null && previousVersion.status === "verified" && !changed
-            ? "verified"
-            : "unverified";
-      }
+      const decision = decideStatus({
+        requested,
+        previous:
+          previousVersion === null
+            ? null
+            : {
+                status: previousVersion.status,
+                contentHash: previousVersion.contentHash,
+                verificationEventId: previousVersion.verificationEventId,
+                verifiedTreeHash: previousVersion.verifiedTreeHash,
+                createdAt: previousVersion.createdAt,
+              },
+        newContentHash: hash,
+        sourceSurface: input.sourceSurface,
+        evidence,
+        allowAgentOverride: input.allowAgentOverride === true,
+      });
 
       const maxVersion = await maxVersionNumber(tx, input.projectId, path);
       const version = Math.max(maxVersion, previousHead?.version ?? 0) + 1;
       const versionId = this.ids.id("ver");
-
-      // A verified version must always cite evidence. When trust is inherited by
-      // re-committing identical text, the previous evidence travels with it.
-      const evidenceEventId =
-        status === "verified"
-          ? (input.verificationEventId ?? previousVersion?.verificationEventId ?? null)
-          : null;
-      if (status === "verified" && evidenceEventId === null) {
-        throw new ChronosError(
-          "INTERNAL",
-          "refusing to write a verified version without a verification event",
-        );
-      }
 
       await insertVersion(tx, {
         versionId,
@@ -272,16 +211,13 @@ export class CommitService {
         summary: input.summary,
         content: input.content,
         contentHash: hash,
-        status,
+        status: decision.status,
         sourceSurface: input.sourceSurface,
         sourceRef: input.sourceRef ?? null,
         author: input.author ?? null,
         createdOnBranch: input.branch,
-        verificationEventId: evidenceEventId,
-        verifiedTreeHash:
-          status === "verified"
-            ? (newEvidenceTreeHash ?? previousVersion?.verifiedTreeHash ?? null)
-            : null,
+        verificationEventId: decision.verificationEventId,
+        verifiedTreeHash: decision.verifiedTreeHash,
         supersedesVersionId: previousVersion?.versionId ?? null,
         forkedFromVersionId: null,
         tokensEstimate: size.tokens,
@@ -306,7 +242,7 @@ export class CommitService {
         path,
         headVersionId: versionId,
         version,
-        status,
+        status: decision.status,
         updatedAt: now,
       });
 
@@ -319,11 +255,11 @@ export class CommitService {
         path,
         version,
         versionId,
-        status,
+        status: decision.status,
         previousVersion: previousHead?.version ?? null,
         previousVersionId: previousHead?.headVersionId ?? null,
-        demoted: previousVersion?.status === "verified" && status === "unverified",
-        verificationEventId: evidenceEventId,
+        demoted: decision.demoted,
+        verificationEventId: decision.verificationEventId,
         renamedFrom: renameFrom,
         warnings,
         node,
@@ -331,11 +267,7 @@ export class CommitService {
     });
   }
 
-  private async requirePromotingEvent(
-    tx: Sql,
-    projectId: string,
-    eventId: string,
-  ): Promise<{ id: string; createdAt: number; treeHash: string | null }> {
+  private async loadEvidence(tx: Sql, projectId: string, eventId: string): Promise<EvidenceView> {
     const event = await getVerificationEvent(tx, eventId);
     if (event === null) {
       throw new ChronosError("EVIDENCE_REQUIRED", `verification event ${eventId} does not exist`, {
@@ -345,19 +277,12 @@ export class CommitService {
     if (event.projectId !== projectId) {
       throw new ChronosError("EVIDENCE_REQUIRED", "verification event belongs to another project");
     }
-    if (!PROMOTING_KINDS.has(event.kind)) {
-      throw new ChronosError(
-        "EVIDENCE_REQUIRED",
-        `verification kind "${event.kind}" cannot promote a node`,
-        { hint: "Use test_pass, build_pass, typecheck_pass or user_approval." },
-      );
-    }
-    if (event.exitCode !== null && event.exitCode !== 0) {
-      throw new ChronosError(
-        "EVIDENCE_REQUIRED",
-        `verification event reports exit code ${event.exitCode}; only 0 can promote`,
-      );
-    }
-    return { id: event.id, createdAt: event.createdAt, treeHash: event.treeHash };
+    return {
+      id: event.id,
+      kind: event.kind,
+      exitCode: event.exitCode,
+      createdAt: event.createdAt,
+      treeHash: event.treeHash,
+    };
   }
 }

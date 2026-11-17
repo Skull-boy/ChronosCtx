@@ -8,6 +8,8 @@ export * from "./db/schema.js";
 export * from "./db/sql.js";
 export * from "./domain/node.js";
 export * from "./engine.js";
+export * from "./epistemic/freshness.js";
+export * from "./epistemic/gate.js";
 
 export * from "./repositories/branches.js";
 export * from "./repositories/checkpoints.js";

@@ -121,7 +121,22 @@ const PHASES = {
         ],
       },
     },
-    { id: "1.8", assertion: "Freshness correctness across 5k generated histories" },
+    {
+      id: "1.8",
+      assertion: "Freshness correctness across 5k generated histories",
+      command: {
+        bin: "corepack",
+        args: [
+          "pnpm",
+          "-F",
+          "@chronos-ctx/core-engine",
+          "exec",
+          "vitest",
+          "run",
+          "src/epistemic/freshness.test.ts",
+        ],
+      },
+    },
     {
       id: "1.9",
       assertion: "Snapshot dedupe: 200 checkpoints, 3 states → 3 rows",

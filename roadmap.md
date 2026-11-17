@@ -2203,10 +2203,10 @@ Phase 0 output: `docs/phase0/REPORT.md` (verdict + numbers) and `docs/phase0/MET
 - [x] Property test: 1,000 randomized fork/commit interleavings across 3 branches produce zero duplicate `(path, version)` and zero gaps that collide.
 
 #### 1.4 Epistemic gate and freshness (D2)
-- [ ] `gate.ts` as the **only** writer of `status`; transitions per the §2.6 state machine and its eight rules.
+- [x] `gate.ts` as the **only** writer of `status`; transitions per the §2.6 state machine and its eight rules.
 - [ ] `verification_events` writer with `tree_hash`, `snapshot_hash`, `covered_paths[]`, redaction, 2 KB log cap.
-- [ ] `epistemic/freshness.ts`: computed `fresh`/`stale`/`unknown` from current tree vs. evidence tree vs. covered paths; unit + property tests.
-- [ ] `EVIDENCE_REQUIRED` for `verified`; `EVIDENCE_STALE` for content changes; web surfaces force `unverified`; content mutation demotes.
+- [x] `epistemic/freshness.ts`: computed `fresh`/`stale`/`unknown` from current tree vs. evidence tree vs. covered paths; unit + property tests.
+- [x] `EVIDENCE_REQUIRED` for `verified`; `EVIDENCE_STALE` for content changes; web surfaces force `unverified`; content mutation demotes.
 - [ ] `deprecated` excluded from boot index, retrievable by path with warning.
 - [ ] Invariant property test: 10k random commit sequences produce zero unevidenced `verified` heads and zero false-`fresh` nodes.
 
