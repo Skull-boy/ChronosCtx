@@ -1,158 +1,192 @@
-# ChronosCtx
+<div align="center">
 
-**A universal stateful context OS and time-travel harness for LLM coding agents.**
+<h1>ChronosCtx</h1>
 
-ChronosCtx gives a coding agent a durable, versioned memory of a project — what was decided, what was tried and failed, what the code looked like when a decision was made — and the ability to restore both the files *and* the reasoning state to an earlier point.
+**A stateful context OS and time-travel harness for LLM coding agents.**
 
-> **Status: Phase 0 complete; Phase 1 (core state graph engine) in progress.**
->
-> Phase 0 measured the architecture instead of assuming it: `docs/phase0/REPORT.md` holds the verdict — **GO for Phase 1, conditional on amendments A1–A8**, adopted by `roadmap.md` v1.3.
->
-> What exists today: the workspace, the normative schema and migrations, the Drizzle mirror with a parity gate, typed identifiers and node paths, the error contract, budget constants, the project/branch/node/snapshot/checkpoint repositories, a D1-compliant `context_commit` core with the epistemic gate, state-only checkpoints with dedupe, the `chronos` CLI (`migrate`, `doctor`, `project`, `stats`), the supply-chain policy check, CI, and the phase-gate runner. There is **no daemon, MCP server, pager or extension yet**; gates that depend on them report `pending` and fail the runner on purpose. The runner is the source of truth for phase status:
->
-> ```bash
-> node scripts/verify-phase.mjs --phase 1
-> ```
+[![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
+[![Node](https://img.shields.io/badge/node-%3E%3D22.15-brightgreen.svg)](.nvmrc)
+[![Status](https://img.shields.io/badge/status-phase%201%20%C2%B7%20in%20progress-orange.svg)](roadmap.md)
+
+</div>
 
 ---
 
-## What Phase 0 established
+## The problem
 
-Nine kill criteria were measured on two hosts, not estimated:
+Coding agents forget.
 
-| Question | Verdict |
+A long task leaves behind a transcript where the decision, the failed attempt that led to it, and the evidence that it works all have the same weight: prose in a window that will soon be cleared, compacted, or truncated. Keep the window and the context rots. Clear it and the reasoning is gone.
+
+ChronosCtx treats project knowledge as a **versioned object** instead of conversation history. Decisions live at stable paths, carry evidence, and can be restored together with the files they describe.
+
+```text
+agent session ──▶ context_boot        small index, not a transcript
+              ──▶ context_page_in     only the nodes this step needs
+              ──▶ context_commit      versioned, evidence-labelled
+              ──▶ context_checkpoint  reasoning state + file tree, atomically
+              ──▶ context_rewind      undo a failed path without losing the lesson
+```
+
+## What it gives you
+
+- **Versioned reasoning state.** Every decision is a node at a deterministic path (`auth/jwt-spec`), with an immutable version ledger. Nothing is overwritten; renames keep aliases.
+- **Evidence, not vibes.** Nodes are `unverified`, `verified`, or `deprecated`. `verified` requires tree-bound evidence, and freshness is recomputed against the current tree — a proof that no longer covers the code is shown as `stale`, never as truth.
+- **Atomic checkpoints.** A snapshot, the node versions it references, the checkpoint row, and the branch head commit in one transaction. There is no visible half-checkpoint.
+- **Rewind that is honest.** Drift is refused, writers are quiesced, a backup checkpoint is mandatory, and irreversible side effects are reported instead of pretending they were undone.
+- **Branches for hypotheses.** Fork the reasoning state, try the risky approach, merge the winner, and keep the loser as a negative constraint.
+- **Bounded context.** Boot ≤ 200 tokens, page-in ≤ 1,200 by default, capsules ≤ 500, all envelope-inclusive and deterministically truncated.
+- **A dead-end ledger.** Failed approaches are recorded with their reason and evidence, so the next agent does not repeat them.
+
+Designed as one local daemon with thin MCP proxies, a dedicated shadow git repository, and a libSQL database. No cloud dependency, and no dependency code executed at install time.
+
+## Measured, not asserted
+
+Phase 0 built one rig per question and ran it on two hosts. These are the numbers that shaped the architecture, including the ones that killed the original design.
+
+### Checkpoints and restore
+
+| Operation | Linux | Windows | Budget |
+| --- | ---: | ---: | --- |
+| Incremental checkpoint, p95 @ 2k files | **6.7 ms** | **27.8 ms** | ≤ 60 ms |
+| Reconciliation scan, p95 @ 2k files | **71 ms** | **569 ms** | ≤ 250 / ≤ 800 ms |
+| Cold checkpoint, p95 @ 20k files | **1,131 ms** | **34,494 ms** | ≤ 1,500 ms Linux; explicit-command only on Windows |
+| Rewind, changed paths only | **164 ms** | **1,503 ms** | ≤ 400 ms Linux |
+| `git add -A` per checkpoint @ 2k | 110 ms | 1,160 ms | **rejected** — this is why the manifest exists |
+
+### Context and install
+
+| Measure | Result |
+| --- | ---: |
+| Full 7-tool surface | 1,795 tokens |
+| Reduced contract (required fields + project/branch) | **663 tokens** |
+| Full schemas with every description deleted | 1,444 tokens |
+| Boot index, counts per group | **183 tokens** |
+| Boot index, with summaries | 387 tokens |
+| Paging net, raw | **66.0 %** |
+| Paging net, cache-adjusted | **−44.4 %** |
+| Published artifact install | **1 package, 0 transitive, 0 lifecycle scripts** |
+| `node:http` boot vs Fastify | **27.6 ms vs 768.8 ms** |
+
+**Reading the numbers.** Windows figures are host-bound: real-time scanning and per-process cost dominate them, so the harness publishes a spawn floor beside every series. The cache-adjusted paging figure is negative because prompt caching reverses the raw saving, and both are always reported together. The token figures are measured against the actual schemas and fixtures; the paging model is an 8-turn scenario documented in the method.
+
+Full method, hosts, confounds, and every gate: [`docs/phase0/REPORT.md`](docs/phase0/REPORT.md) · [`docs/phase0/METHOD.md`](docs/phase0/METHOD.md).
+
+## Status
+
+**Phase 0 complete. Phase 1 (core state graph engine) in progress.**
+
+| Area | State |
 | --- | --- |
-| Can checkpointing be automatic and cheap? | **Not with `git add -A`.** Against a 60 ms budget the full scan costs 110 ms p95 on Linux and 1,160 ms on Windows. A watcher-driven incremental manifest costs 6.7 / 27.8 ms. |
-| Does identical content produce identical hashes across OSes? | **Yes for content** (7/9 cases, including sha256 repos and CRLF worktrees with shadow attributes); symlinks and case-only collisions are refused by design. |
-| Is rewind safe and fast? | **Safe.** Both type-conflict directions and three crash points resume to a verified tree. Fast only with changed-path checkout (164 ms Linux vs 493 ms). |
-| Do the token budgets hold? | **No.** All 7 tool schemas cost 1,444 tokens with every description deleted; the reduced contract is 663. A 300-node boot index is 183 tokens with counts-only groups. |
-| Does paging actually save tokens? | **66.0 % raw, but −44.4 % once prompt caching is priced in.** The claim is bounded context growth, not cheaper tokens. |
-| Does the supply-chain model survive? | **Yes.** The install resolves 1 package, 0 transitive, 0 lifecycle scripts — proven with a hostile-package control. |
-| Does a web adapter work? | **16/16 behaviours on fixtures.** Live-site validation is Phase 5 evidence and is not claimed. |
+| Workspace, schema, migrations, Drizzle parity gate | ✅ |
+| IDs, node paths, error contract, budgets | ✅ |
+| Projects, branches, node versions, aliases | ✅ |
+| `context_commit` core, D1 versioning, optimistic concurrency | ✅ |
+| Epistemic gate, evidence rules, tree-bound freshness | ✅ |
+| Snapshots, dedupe, state-only checkpoints | ✅ |
+| CLI (`migrate`, `doctor`, `project`, `stats`) | ✅ |
+| Pager, boot index, tool-surface budget | next |
+| Capsule v1 and render hash | next |
+| Daemon, loopback security, filesystem probe | next |
+| MCP surface, shadow git, rewind, forks | Phase 2 |
 
-The uncomfortable numbers are in the report, not softened: [`docs/phase0/REPORT.md`](docs/phase0/REPORT.md).
-
----
-
-## Quickstart (development)
-
-Requirements: **Node ≥ 22.15** (see `.nvmrc`), **git ≥ 2.30**, and corepack (bundled with Node).
+Phase 1 has **9 of 18 gates** implemented. The gate runner is authoritative, and pending gates fail the run on purpose:
 
 ```bash
+node scripts/verify-phase.mjs --phase 0    # 2/2
+node scripts/verify-phase.mjs --phase 1    # 9/18 today
+node scripts/verify-phase.mjs --list
+```
+
+126 unit and property tests currently pass, including 1,000 randomized fork/commit interleavings, 200-checkpoint dedupe, and 5,000 generated freshness histories.
+
+## Quickstart
+
+Requires **Node ≥ 22.15**, **git ≥ 2.30**, and corepack (bundled with Node).
+
+```bash
+git clone https://github.com/Skull-boy/ChronosCtx.git
+cd ChronosCtx
+
 corepack enable
 corepack pnpm install --frozen-lockfile
 corepack pnpm build
+
 corepack pnpm test
+node packages/cli/dist/index.js doctor
 ```
 
-If corepack cannot write shims next to the Node binary — common on a managed Windows install — install them locally:
+<details>
+<summary>If <code>corepack enable</code> cannot write shims</summary>
+
+Some managed Windows installs block writes next to the Node binary. Install the shims inside the repo instead:
 
 ```bash
 mkdir .tools/bin
 corepack enable --install-directory .tools/bin
-# bash:
+
+# bash
 export PATH="$PWD/.tools/bin:$PATH"
-# PowerShell:
+# PowerShell
 $env:PATH = "$PWD\.tools\bin;$env:PATH"
 ```
 
 `.tools/` is gitignored. Turborepo needs `pnpm` on `PATH`; every other task also runs as `corepack pnpm <task>`.
 
-`node scripts/bootstrap.mjs` does the install and build and tells you which shim path it used.
-
-### Useful commands
-
-```bash
-corepack pnpm lint                 # Biome (format + lint)
-corepack pnpm typecheck            # strict tsc, all packages
-corepack pnpm test                 # vitest, all packages
-corepack pnpm check:supply-chain   # six-rule supply-chain policy
-node scripts/verify-phase.mjs --phase 1          # gate runner
-node scripts/verify-phase.mjs --list             # every gate and its status
-```
+</details>
 
 ### CLI
 
-The CLI talks to the engine in-process for now; the daemon arrives in Phase 1.9 and becomes the single writer.
-
 ```bash
-node packages/cli/dist/index.js doctor              # node, schema, WAL, FK, busy_timeout
-node packages/cli/dist/index.js migrate --check     # exit 1 if anything is pending
+node packages/cli/dist/index.js migrate --check       # exit 1 if anything is pending
 node packages/cli/dist/index.js project create toy-api -n "Toy API"
 node packages/cli/dist/index.js project fork toy-api redis-rate-limit
-node packages/cli/dist/index.js project list
-node packages/cli/dist/index.js stats --dedupe      # checkpoints vs snapshot rows
+node packages/cli/dist/index.js stats --dedupe        # checkpoints vs snapshot rows
 ```
 
-`CHRONOS_HOME` selects the state directory (default `~/.chronos-ctx`); it must not be on a synced or network drive.
+State lives in `CHRONOS_HOME` (default `~/.chronos-ctx`). Network and synced drives are refused, because a WAL database on a sync client is a corruption generator.
 
----
+## Repository layout
 
-## Layout
+| Path | Contents |
+| --- | --- |
+| `roadmap.md` | The normative architecture: schema, tool contracts, phases, gates, decisions. |
+| `packages/shared-types` | IDs, node paths, errors, budgets. Zero runtime dependencies, enforced in CI. |
+| `packages/core-engine` | Storage, migrations, repositories, epistemic gate, freshness, snapshots, checkpoints. |
+| `packages/cli` | The `chronos` command surface. |
+| `docs/adr` | Architecture decisions and the alternatives each one rejected. |
+| `docs/phase0` | The feasibility report, method, and confounds. |
+| `scripts` | Bootstrap, phase gate runner, supply-chain policy, doctor gate. |
+| `bench` | The Phase 0 measurement harness, retained as reproducible evidence. |
+| `tests` | Cross-package integration, crash, security, and conformance suites. |
 
-```text
-roadmap.md                      # v1.3 — the normative architecture (schema, tools, gates)
-packages/
-  shared-types/                 # IDs, node paths, errors, budgets. Zero runtime dependencies.
-  core-engine/                  # storage, migrations, epistemic gate, pager, snapshots, daemon
-    migrations/0001_init.sql    # the normative DDL, transcribed from roadmap §4.2
-    src/db/schema.ts            # Drizzle mirror, parity-tested against the DDL
-  cli/                          # `chronos migrate|doctor|project|stats`
-docs/
-  adr/                          # architecture decisions (0001–0018, 0025–0026 written)
-  phase0/REPORT.md              # the Phase 0 verdict, gate by gate
-  phase0/METHOD.md              # how every number was produced, and its confounds
-  supply-chain/baseline.json    # build-time lifecycle-script ratchet
-scripts/
-  bootstrap.mjs                 # one-command install + build
-  verify-phase.mjs              # phase gate runner; `pending` fails the run
-  check-supply-chain.mjs        # six-rule policy check
-bench/                          # the Phase 0 measurement harness (preserved evidence)
-.github/workflows/              # CI matrix + supply-chain scanning
-```
+## Design principles
 
----
+1. **Evidence over assertion.** A number ships with its method and artifact, or it does not ship. A limitation is stated, not omitted.
+2. **Fail closed on trust.** A missing proof downgrades a claim; it never silently promotes one. Web surfaces cannot self-verify.
+3. **Local-first.** The database, the file history, and the reasoning state stay on the user's machine. The published artifact resolves nothing and executes nothing at install time.
+4. **One writer, one transaction.** Concurrency is a named refusal (`PROJECT_BUSY`, `WRITE_REJECTED_BRANCH_QUIESCED`), not a silent queue.
+5. **Budgets include the envelope.** A response that reports content tokens but hides its JSON and schema overhead is not bounded.
+6. **Identical state is stored once.** Snapshots carry a local `snapshot_hash` and a portable `content_root`, so sync can dedupe knowledge without collapsing two real histories.
 
-## Design commitments
+## Documentation
 
-These are not aspirations; they are enforced in code or in CI, and each has an ADR:
-
-- **One writer.** A local daemon owns the database; MCP surfaces are stdio proxies. Contention returns `PROJECT_BUSY`, never a silent lock wait. ([0001](docs/adr/0001-daemon-first-single-writer.md))
-- **Trust is evidence-bound.** A node is `unverified`, `verified` or `deprecated`; only the epistemic gate writes that field, `verified` requires tree-bound evidence, and freshness is computed at read time. ([0005](docs/adr/0005-epistemic-gate.md), [0014](docs/adr/0014-tree-bound-freshness.md))
-- **Identical state is stored once.** Snapshots carry two identities: a local `snapshot_hash` and a portable `content_root`. ([0017](docs/adr/0017-content-addressed-snapshots.md))
-- **Budgets are measured, including the envelope.** Silent truncation is a test failure. ([0008](docs/adr/0008-budgets-truncation.md))
-- **Capsules are citable.** Fixed order, no timestamps in model-visible text, a reproducible `render_hash`. ([0009](docs/adr/0009-capsule-v1.md))
-- **Install executes nothing.** 1 package, 0 transitive, 0 lifecycle scripts; the build tree is ratcheted. ([0025](docs/adr/0025-supply-chain-model.md))
-
-## Reproducing the Phase 0 numbers
-
-The harness is retained, and its dependencies are dev-only:
-
-```bash
-corepack pnpm bench:tokens        # fastest gate; no fixtures needed
-corepack pnpm bench:manifest
-corepack pnpm bench:rewind
-corepack pnpm bench:checkpoint
-corepack pnpm bench:determinism   # cross-OS comparison needs both hosts
-```
-
-Fixtures are generated deterministically outside the repository. `docs/phase0/METHOD.md` documents each run, the hosts, and the confounds; artifacts land in `bench/results/`, which is gitignored because timing is machine-specific.
-
----
-
-## Two things worth knowing before reading benchmark numbers
-
-1. **Windows figures are host-bound.** Real-time scanning and per-process cost dominate them. The harness reports a spawn floor beside every series so design cost and host cost stay separable. Host details are deliberately not published — the method and the artifact are, the machine inventory is not.
-2. **The token model is a model.** Phase 0 had no working agent, so the 8-turn scenario is computed from named constants and reported both raw and cache-adjusted, because prompt caching reverses the sign.
-
----
+- [Roadmap](roadmap.md) — the full design, including the rejected alternatives.
+- [ADRs](docs/adr/README.md) — why each locked decision was made.
+- [Phase 0 report](docs/phase0/REPORT.md) — the measurements and the GO verdict.
+- [Supply-chain model](docs/adr/0025-supply-chain-model.md) — why installs execute nothing.
+- [Security policy](SECURITY.md) — private disclosure, 72-hour acknowledgement, supported versions.
 
 ## Contributing
 
-Read [CONTRIBUTING.md](CONTRIBUTING.md) — it lists the rules that actually get enforced (DCO sign-off, no host details in tracked files, no direct writes to epistemic state, a gate for every new behaviour). Governance and the RFC process are in [GOVERNANCE.md](GOVERNANCE.md). Security reports follow [SECURITY.md](SECURITY.md); do not open a public issue for a vulnerability.
+Contributions are welcome. Read [CONTRIBUTING.md](CONTRIBUTING.md) first: it lists the rules that are actually enforced (DCO sign-off, no host details or personal data in tracked files, no direct writes to epistemic state, a gate for every new behaviour). Governance and the RFC process are in [GOVERNANCE.md](GOVERNANCE.md).
+
+## Security
+
+Do **not** open a public issue for a vulnerability. Follow [SECURITY.md](SECURITY.md); GitHub private vulnerability reporting is the primary channel.
 
 ## License
 
 Apache-2.0. See [LICENSE](LICENSE).
 
-Nothing in this repository is called a "standard". Until the conformance suite ships (Phase 3), the correct description is "open protocol + reference implementation".
+The project name, logo, and compatibility claims are governed by the license's trademark clause. Nothing here is called a "standard"; until the conformance suite ships, the correct description is **open protocol + reference implementation**.
