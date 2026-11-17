@@ -4,7 +4,7 @@
 **Roadmap under test:** v1.2
 **Date:** 2026-11-16
 **Status:** **GO for Phase 1, conditional on amendments A1–A8 (§8) landing in roadmap v1.3 before any engine code is written. v1.3 adopts all eight.**
-**Method:** [`METHOD.md`](./METHOD.md) — every number below has a committed JSON artifact in `bench/results/`.
+**Method:** [`METHOD.md`](./METHOD.md) — every number below is reproducible from a committed harness, and the JSON artifacts under `bench/results/` are regenerated locally (they are machine-specific and deliberately not committed; see §9).
 
 ---
 
@@ -44,7 +44,7 @@ The fixture marker file was also moved outside the worktree after it was found t
 
 **Spike size, disclosed.** The roadmap budgets the Phase 0 spike at ≤ 600 lines. The measurement harness is **2,591 lines across 14 files** — over budget, and deliberately so. The budget applies to throwaway *product-shaped* code, of which this spike contains none: there is no daemon, no schema, no tool handler. What exists is one rig per question, because each measurement needed its own fixture, isolation, and failure-injection path (the rewind rig alone is 305 lines, half of it correctness assertions rather than timing). Per §5 Phase 0, "no product code survives except the benchmark harness and the capability probe" — the harness is the surviving artifact, and it is now the seed of the Phase 6 benchmark suite rather than something to delete.
 
-**"Committed".** The roadmap requires the report to be committed with a GO verdict. It is: this report, the method, the two ADRs, and the harness are the initial commit on `main` of `github.com/Skull-boy/ChronosCtx`, with line endings normalised to LF by `.gitattributes`. The measurement artifacts (`bench/results/`) are not committed — they are machine-specific and regenerated per `METHOD.md` §7. The Phase 0 spike rule "not merged into `main`" applies to product-shaped spike code; this commit contains none — no daemon, no schema, no tool handler — and the harness is explicitly the artifact Phase 0 is allowed to leave behind.
+**"Committed".** The roadmap requires the report to be committed with a GO verdict. It is: this report, the method, the two ADRs, and the harness are the initial commit on `main` of the project repository, with line endings normalised to LF by `.gitattributes`. The measurement artifacts (`bench/results/`) are not committed — they are machine-specific and regenerated per `METHOD.md` §7. The Phase 0 spike rule "not merged into `main`" applies to product-shaped spike code; this commit contains none — no daemon, no schema, no tool handler — and the harness is explicitly the artifact Phase 0 is allowed to leave behind.
 
 ---
 

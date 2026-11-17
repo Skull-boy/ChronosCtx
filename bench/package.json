@@ -1,0 +1,18 @@
+{
+  "name": "@chronos-ctx/phase0-bench",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Phase 0 measurement harness — retained as the seed of the Phase 6 benchmark suite",
+  "license": "Apache-2.0",
+  "scripts": {
+    "tokens": "node tokens.mjs",
+    "adapter": "node adapter.mjs",
+    "determinism": "node determinism.mjs",
+    "summary": "node summary.mjs"
+  },
+  "devDependencies": {
+    "js-tiktoken": "1.0.21",
+    "jsdom": "29.1.1"
+  }
+}

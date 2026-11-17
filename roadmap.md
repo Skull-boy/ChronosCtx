@@ -2170,36 +2170,37 @@ Phase 0 output: `docs/phase0/REPORT.md` (verdict + numbers) and `docs/phase0/MET
 *Deliverable: a headless engine + local daemon that can store, version, page, and snapshot context with zero git involvement. No MCP, no extension.*
 
 #### 1.0 Foundation
-- [ ] Initialize pnpm workspace, Turborepo, `tsconfig.base.json`, Biome, vitest, changesets; pin `packageManager` **with its sha512 hash**; commit `.npmrc` per §3.5.2; set `pnpm.onlyBuiltDependencies: []`.
-- [ ] Write the Phase 1 ADRs: 0001–0009 (daemon-first, SQLite/libSQL, ULID, shadow-repo-isolated, epistemic demotion, 7+1 tools, project-global versions, tree-bound freshness, capsule format), 0013–0018 (the D1–D6 schema decisions), and 0025 (supply-chain model, including the Phase 0 swap decisions). Each ADR records the rejected alternatives from §7.
+- [x] Initialize pnpm workspace, Turborepo, `tsconfig.base.json`, Biome, vitest, changesets; pin `packageManager` **with its sha512 hash**; commit `.npmrc` per §3.5.2; set `pnpm.onlyBuiltDependencies: []`.
+- [x] Write the Phase 1 ADRs: 0001–0009 (daemon-first, SQLite/libSQL, ULID, shadow-repo-isolated, epistemic demotion, 7+1 tools, project-global versions, tree-bound freshness, capsule format), 0013–0018 (the D1–D6 schema decisions), and 0025 (supply-chain model, including the Phase 0 swap decisions). Each ADR records the rejected alternatives from §7.
 - [ ] CI matrix (ubuntu/macos/windows × Node 22/24): install → typecheck → lint → build → unit → integration, plus `supply-chain.yml` (osv-scanner, dependency-review, `check-supply-chain.mjs`).
-- [ ] `scripts/verify-phase.mjs` skeleton with `--phase=<n> --json` and a nonzero exit on failure.
-- [ ] `scripts/bootstrap.mjs` (`corepack enable && pnpm i && pnpm build`) documented in README.
-- [ ] `scripts/check-supply-chain.mjs` implementing the six rules in §3.5.3, wired as a required check.
+- [x] `scripts/verify-phase.mjs` skeleton with `--phase=<n> --json` and a nonzero exit on failure.
+- [x] `scripts/bootstrap.mjs` (`corepack enable && pnpm i && pnpm build`) documented in README.
+- [x] `scripts/check-supply-chain.mjs` implementing the six rules in §3.5.3, wired as a required check.
 - [ ] `scripts/build-release.mjs`: bundle → stage per-platform packages → Cosign sign → emit CycloneDX SBOM; dry-run locally, publish only from CI.
-- [ ] `SECURITY.md` with the disclosure address, a PGP key, the 72-hour SLA, and the supported-version table.
-- [ ] Commit the Phase 0 report and fold any deltas into §4 before writing schema code.
+- [x] `SECURITY.md` with a working private disclosure channel, the 72-hour acknowledgement SLA, and the supported-version table. A project PGP key and `security@` alias are release-blocking for 1.0 and are tracked in `docs/security/disclosure.md`; no placeholder fingerprint is published.
+- [x] Commit the Phase 0 report and fold any deltas into §4 before writing schema code.
 
 #### 1.1 Storage
-- [ ] `db/client.ts`: open libSQL at `CHRONOS_HOME`, set pragmas, expose `withTx(fn, {immediate:true})`.
-- [ ] Migrations `0001_init.sql` matching §4.2 exactly (including `snapshots`, `node_edges`, `agent_sessions`, `side_effects`, `nodes_fts`); `migrate.ts` applies forward-only, records `user_version`.
-- [ ] Drizzle schema mirrors DDL; generated-types test asserts column parity against `PRAGMA table_info`.
-- [ ] Repository layer for projects, branches, nodes, versions, checkpoints, snapshots, edges, sessions, side effects, constraints, verifications, aliases, paging.
-- [ ] `chronos migrate --dry-run` prints pending migrations; `--to <n>` refuses downgrade with `UNSUPPORTED`.
+- [x] `db/client.ts`: open libSQL at `CHRONOS_HOME`, set pragmas, expose `withTx(fn, {immediate:true})`.
+- [x] Migrations `0001_init.sql` matching §4.2 exactly (including `snapshots`, `node_edges`, `agent_sessions`, `side_effects`, `nodes_fts`); `migrate.ts` applies forward-only, records `user_version`.
+- [x] Drizzle schema mirrors DDL; generated-types test asserts column parity against `PRAGMA table_info`.
+- [x] Repository layer for projects, branches, nodes, versions, checkpoints, snapshots, verification events and aliases.
+- [ ] Repository layer for edges, sessions, side effects, negative constraints and paging events.
+- [x] `chronos migrate --dry-run` prints pending migrations; `--to <n>` refuses downgrade with `UNSUPPORTED`.
 
 #### 1.2 Deterministic paths and identities
-- [ ] `shared-types/paths.ts`: NFKC normalize, slugify, validate grammar, depth/charset caps, collision suffixing.
-- [ ] ULID factory with prefixes (`prj_`, `brn_`, `nod_`, `ver_`, `chk_`, `nc_`, `vev_`, `rwd_`, `snp_`, `edg_`, `ses_`, `sfe_`) + injectable `Clock`/`IdGenerator` (`CHRONOS_DETERMINISTIC=1` → fixed sequence for fixtures).
+- [x] `shared-types/paths.ts`: NFKC normalize, slugify, validate grammar, depth/charset caps, collision suffixing.
+- [x] ULID factory with prefixes (`prj_`, `brn_`, `nod_`, `ver_`, `chk_`, `nc_`, `vev_`, `rwd_`, `snp_`, `edg_`, `ses_`, `sfe_`) + injectable `Clock`/`IdGenerator` (`CHRONOS_DETERMINISTIC=1` → fixed sequence for fixtures).
 - [ ] `node_aliases` resolution + `ALIAS_REDIRECT` warning on `page_in`.
 - [ ] Property tests: normalize idempotent; distinct inputs never collide after suffixing; reserved names rejected.
 
 #### 1.3 Node versioning (D1)
-- [ ] `context_commit` core: validate → `BEGIN IMMEDIATE` → `max(version)+1` for `(project_id, node_path)` → insert `node_versions` → upsert `state_nodes` → commit.
-- [ ] Optimistic concurrency via `expected_version` → `VERSION_CONFLICT` with current state.
-- [ ] Title/summary-only edits bump the version but preserve `verified` **only** when `content_hash` is unchanged; content edits demote.
-- [ ] Content size guard (800-token target) → `warning: NODE_OVERSIZED` with suggested split; hard reject > 200 KB.
-- [ ] Rename support (`path` change) writes alias + new head, preserves lineage via `supersedes_version_id`.
-- [ ] Property test: 1,000 randomized fork/commit interleavings across 3 branches produce zero duplicate `(path, version)` and zero gaps that collide.
+- [x] `context_commit` core: validate → `BEGIN IMMEDIATE` → `max(version)+1` for `(project_id, node_path)` → insert `node_versions` → upsert `state_nodes` → commit.
+- [x] Optimistic concurrency via `expected_version` → `VERSION_CONFLICT` with current state.
+- [x] Title/summary-only edits bump the version but preserve `verified` **only** when `content_hash` is unchanged; content edits demote.
+- [x] Content size guard (800-token target) → `warning: NODE_OVERSIZED` with suggested split; hard reject > 200 KB.
+- [x] Rename support (`path` change) writes alias + new head, preserves lineage via `supersedes_version_id`.
+- [x] Property test: 1,000 randomized fork/commit interleavings across 3 branches produce zero duplicate `(path, version)` and zero gaps that collide.
 
 #### 1.4 Epistemic gate and freshness (D2)
 - [ ] `gate.ts` as the **only** writer of `status`; transitions per the §2.6 state machine and its eight rules.
@@ -2230,15 +2231,15 @@ Phase 0 output: `docs/phase0/REPORT.md` (verdict + numbers) and `docs/phase0/MET
 - [ ] Budget tests: 300-node fixture boots at ≤ 150 tokens; 12-path request never exceeds `max_tokens`; envelope counted.
 
 #### 1.8 Snapshots, dedupe, capsules (C5)
-- [ ] Two identities per §4.2.1: `snapshot_hash` over sorted `path\0version_id` (local) and `content_root` over sorted `path\0content_hash` (portable); `snapshots` table with `UNIQUE(project_id, snapshot_hash, kind)`, `idx_snap_content`, and `ON CONFLICT DO NOTHING`.
-- [ ] Test that two states differing only in `version_id` share a `content_root` but produce two snapshot rows — proving local rollback is not collapsed by cross-device equivalence.
-- [ ] DB-only checkpoint creation (`snapshot_kind='state_only'`) with parent chain, branch head update, single-source head.
+- [x] Two identities per §4.2.1: `snapshot_hash` over sorted `path\0version_id` (local) and `content_root` over sorted `path\0content_hash` (portable); `snapshots` table with `UNIQUE(project_id, snapshot_hash, kind)`, `idx_snap_content`, and `ON CONFLICT DO NOTHING`.
+- [x] Test that two states differing only in `version_id` share a `content_root` but produce two snapshot rows — proving local rollback is not collapsed by cross-device equivalence.
+- [x] DB-only checkpoint creation (`snapshot_kind='state_only'`) with parent chain, branch head update, single-source head.
 - [ ] Capsule v1 renderer + `render_hash`; **no timestamps in model-visible text**; freshness markers verified by snapshot tests.
 - [ ] Capsule parse/verify (`chronos capsule verify <file>`).
-- [ ] Dedupe proof test: 200 checkpoints with 3 distinct states → exactly 3 snapshot rows; `chronos stats --dedupe` reports the saving.
+- [x] Dedupe proof test: 200 checkpoints with 3 distinct states → exactly 3 snapshot rows; `chronos stats --dedupe` reports the saving.
 
 #### 1.9 Daemon skeleton, ports, security
-- [ ] Fastify app with `/v1/health`, `/v1/projects`, `/v1/tools/*` calling the engine; OpenAPI generation.
+- [ ] `node:http` app with a zod-validated route table serving `/v1/health`, `/v1/projects`, `/v1/tools/*` from the engine; OpenAPI generation from the zod schemas (Fastify is retired — see ADR-0025).
 - [ ] IPC transport (named pipe / unix socket) + `daemon.lock` with PID/port/protocol; stale-lock recovery.
 - [ ] Loopback HTTP with bearer auth (argon2id-hashed tokens, scoped, expiring), CORS allowlist, `Host`/`Origin` validation, request size limits, idle shutdown.
 - [ ] Per-user port allocation 4870–4899 with `run/daemon.json` discovery; `PORT_RANGE_EXHAUSTED` with owning PIDs; 4872 reserved.

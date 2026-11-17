@@ -1,0 +1,15 @@
+{
+  "name": "@chronos-ctx/tests",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Cross-package integration, crash, security and conformance suites",
+  "license": "Apache-2.0",
+  "scripts": {
+    "test": "vitest run --passWithNoTests"
+  },
+  "devDependencies": {
+    "@chronos-ctx/core-engine": "workspace:*",
+    "@chronos-ctx/shared-types": "workspace:*"
+  }
+}

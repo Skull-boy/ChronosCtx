@@ -1,0 +1,20 @@
+{
+  "measuredAt": "2026-11-17",
+  "note": "Build-time lifecycle-script ratchet (ADR-0025). These packages declare scripts but none execute: pnpm.onlyBuiltDependencies is [] and .npmrc sets ignore-scripts=true. The ratchet exists so the build graph cannot grow silently; the install-time tree is asserted separately and must be 1 package / 0 transitive / 0 scripts.",
+  "buildTreeLifecyclePackages": 7,
+  "packages": [
+    "esbuild@0.28.2 (postinstall)",
+    "jsdom@29.1.1 (prepare)",
+    "lru-cache@11.5.3 (prepare)",
+    "rollup@4.68.3 (prepare)",
+    "tinyexec@1.3.1 (prepare)",
+    "undici@7.30.2 (prepare)",
+    "whatwg-url@16.0.1 (prepare)"
+  ],
+  "directRuntimeBudget": 8,
+  "installTimeBudget": {
+    "packages": 1,
+    "transitive": 0,
+    "lifecycleScripts": 0
+  }
+}

@@ -1,7 +1,26 @@
 ﻿node_modules/
+dist/
+coverage/
+.turbo/
+.changeset/*.md.tmp
+
+# ChronosCtx runtime state (never committed)
+.chronos/
+*.db
+*.db-wal
+*.db-shm
+
+# Phase 0 + benchmark scratch (machine-specific; never committed)
 bench/.work/
 bench/.deps/
 bench/fixtures/
 bench/results/
 docs/phase0/*.tmp
+
+# Corepack shims installed into the repo when `corepack enable` cannot write
+# next to the Node binary (see CONTRIBUTING.md)
+.tools/
+
 *.log
+.env
+.env.*

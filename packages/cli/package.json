@@ -1,0 +1,30 @@
+{
+  "name": "@chronos-ctx/cli",
+  "version": "0.0.0",
+  "private": false,
+  "type": "module",
+  "description": "The chronos command-line interface",
+  "license": "Apache-2.0",
+  "bin": {
+    "chronos": "./dist/index.js"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run --passWithNoTests"
+  },
+  "dependencies": {
+    "@chronos-ctx/core-engine": "workspace:*",
+    "@chronos-ctx/shared-types": "workspace:*",
+    "commander": "15.1.0"
+  }
+}

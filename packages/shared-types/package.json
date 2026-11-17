@@ -1,0 +1,23 @@
+{
+  "name": "@chronos-ctx/shared-types",
+  "version": "0.0.0",
+  "private": false,
+  "type": "module",
+  "description": "Zero-runtime-dependency types, identifiers, paths, errors and budget constants for ChronosCtx",
+  "license": "Apache-2.0",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {}
+}

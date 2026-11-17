@@ -1,28 +1,42 @@
 {
-  "name": "chronos-ctx-phase0",
+  "name": "chronos-ctx",
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "description": "Phase 0 feasibility spike for ChronosCtx: measurement harness and report. Not product code.",
+  "description": "ChronosCtx — a universal stateful context OS and time-travel harness for LLM agents",
   "license": "Apache-2.0",
   "engines": {
     "node": ">=22.15"
   },
   "scripts": {
+    "bootstrap": "node scripts/bootstrap.mjs",
+    "build": "turbo run build",
+    "typecheck": "turbo run typecheck",
+    "lint": "biome check .",
+    "lint:fix": "biome check --write .",
+    "format": "biome format --write .",
+    "test": "turbo run test",
+    "chronos": "node packages/cli/dist/index.js",
+    "verify:phase": "node scripts/verify-phase.mjs",
+    "check:supply-chain": "node scripts/check-supply-chain.mjs",
+    "changeset": "changeset",
+    "bench:tokens": "node bench/tokens.mjs",
     "bench:checkpoint": "node bench/checkpoint.mjs --files 2000",
-    "bench:checkpoint:20k": "node bench/checkpoint.mjs --files 20000 --quick",
     "bench:manifest": "node bench/manifest.mjs --files 2000",
     "bench:rewind": "node bench/rewind.mjs --files 2000",
-    "bench:determinism": "node bench/determinism.mjs",
-    "bench:alternates": "node bench/alternates.mjs",
-    "bench:tokens": "node bench/tokens.mjs",
-    "bench:adapter": "node bench/adapter.mjs",
-    "bench:supplychain": "node bench/supplychain.mjs",
-    "bench:swap": "node bench/swap.mjs",
-    "summary": "node bench/summary.mjs"
+    "bench:determinism": "node bench/determinism.mjs"
   },
   "devDependencies": {
-    "js-tiktoken": "1.0.21",
-    "jsdom": "29.1.1"
-  }
+    "@biomejs/biome": "2.6.7",
+    "@changesets/cli": "3.0.3",
+    "@types/node": "22.20.5",
+    "turbo": "2.11.10",
+    "typescript": "5.9.3",
+    "vitest": "5.1.0",
+    "vite": "7.3.8"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": []
+  },
+  "packageManager": "pnpm@10.34.9+sha512.f49b5a8ea0fdedb44bb3c0c1d6575092a53c2950d95b7ad15df11f17974877a2de3a01c07e934e9b28ce716e51c09a94962c7306d09be2e1e4b18a8c8762fd32"
 }
