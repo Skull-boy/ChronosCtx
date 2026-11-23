@@ -101,3 +101,26 @@ export async function constraintStats(
   if (row === undefined) return { active: 0, blocking: 0 };
   return { active: integer(row, "active"), blocking: integer(row, "blocking") };
 }
+
+/**
+ * Branch-applicable active constraints, ordered the same way as the per-path
+ * query. The capsule renders these as `DO NOT RETRY`, so the order is part of
+ * the artifact: blocking first, then most frequently observed, then newest.
+ */
+export async function listActiveConstraints(
+  sql: Sql,
+  projectId: string,
+  branch: string,
+  limit = 10,
+): Promise<NegativeConstraint[]> {
+  const result = await sql.execute({
+    sql: `${SELECT}
+           WHERE project_id = ? AND status = 'active'
+             AND (branch IS NULL OR branch = ?)
+           ORDER BY CASE severity WHEN 'blocking' THEN 0 ELSE 1 END,
+                    occurrences DESC, created_at DESC, id ASC
+           LIMIT ?`,
+    args: [projectId, branch, limit],
+  });
+  return result.rows.map(toConstraint);
+}

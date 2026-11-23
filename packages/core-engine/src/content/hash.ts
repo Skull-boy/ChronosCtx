@@ -83,5 +83,14 @@ export function contentRoot(entries: readonly ContentRootEntry[]): string {
 
 /** Capsule render hash: computed over model-visible text only (ADR-0009). */
 export function renderHash(modelVisibleText: string): string {
-  return sha256Tagged(`chronos-capsule-v1\n${modelVisibleText}`);
+  return sha256Tagged(`chronos-capsule-v1\n${normalizeCapsuleText(modelVisibleText)}`);
+}
+
+/**
+ * A capsule written on Windows and read on Linux must hash identically. Line
+ * endings are normalized and trailing newlines removed before hashing; the
+ * visible text is unchanged for a reader.
+ */
+export function normalizeCapsuleText(text: string): string {
+  return text.replace(/\r\n?/gu, "\n").replace(/\n+$/u, "");
 }

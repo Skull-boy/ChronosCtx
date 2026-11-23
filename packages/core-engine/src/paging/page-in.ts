@@ -13,10 +13,10 @@ import {
 } from "@chronos-ctx/shared-types";
 import type { Database } from "../db/client.js";
 import {
-  computeFreshness,
+  type FreshnessContext,
   type FreshnessResult,
   freshnessMarker,
-  type TreeState,
+  nodeFreshness,
 } from "../epistemic/freshness.js";
 import { requireBranch } from "../repositories/branches.js";
 import { listConstraintsForPath, type NegativeConstraint } from "../repositories/constraints.js";
@@ -43,12 +43,6 @@ import { envelopeFactory, makeEnvelope } from "./envelope.js";
  * a sentence boundary. Status and freshness markers are never the thing that is
  * dropped; a node that cannot carry its marker is removed instead.
  */
-
-export interface FreshnessContext {
-  currentTree: TreeState | null;
-  /** Evidence trees keyed by the `verified_tree_hash` recorded on the version. */
-  evidenceTrees: ReadonlyMap<string, TreeState>;
-}
 
 export interface PageInInput {
   projectId: string;
@@ -302,7 +296,7 @@ export class PageInService {
         continue;
       }
 
-      const nodeFreshness = await this.computeNodeFreshness(view, freshnessContext);
+      const nodeFreshnessResult = await this.computeNodeFreshness(view, freshnessContext);
       const constraints = includeConstraints
         ? await listConstraintsForPath(
             this.db,
@@ -335,10 +329,10 @@ export class PageInService {
           message: `${view.nodePath}@v${view.version} is unverified`,
           path: view.nodePath,
         });
-      } else if (nodeFreshness.value === "stale") {
+      } else if (nodeFreshnessResult.value === "stale") {
         warnings.push({
           code: "STALE_EVIDENCE",
-          message: `${view.nodePath}@v${view.version}: ${nodeFreshness.reason}`,
+          message: `${view.nodePath}@v${view.version}: ${nodeFreshnessResult.reason}`,
           path: view.nodePath,
         });
       }
@@ -347,7 +341,7 @@ export class PageInService {
         view,
         requestedPath,
         resolvedFrom: alias.path === requestedPath ? null : requestedPath,
-        freshness: nodeFreshness,
+        freshness: nodeFreshnessResult,
         constraints,
         edges,
       });
@@ -540,39 +534,15 @@ export class PageInService {
     view: NodeView,
     context: FreshnessContext | null,
   ): Promise<FreshnessResult> {
-    if (view.status !== "verified") {
-      return {
-        value: "unknown",
-        reason: view.status === "deprecated" ? "node is deprecated" : "node is not verified",
-        changedCoveredPaths: [],
-      };
-    }
-    if (view.verifiedTreeHash === null) {
-      return {
-        value: "unknown",
-        reason: "no tree recorded with the evidence",
-        changedCoveredPaths: [],
-      };
-    }
-    if (context === null || context.currentTree === null) {
-      return { value: "unknown", reason: "no workspace attached", changedCoveredPaths: [] };
-    }
-    const evidenceTree = context.evidenceTrees.get(view.verifiedTreeHash);
-    if (evidenceTree === undefined) {
-      return {
-        value: "unknown",
-        reason: "tree snapshot unavailable",
-        changedCoveredPaths: [],
-      };
-    }
     const event =
       view.verificationEventId === null
         ? null
         : await getVerificationEvent(this.db, view.verificationEventId);
-    return computeFreshness({
-      evidenceTree,
-      currentTree: context.currentTree,
+    return nodeFreshness({
+      status: view.status,
+      verifiedTreeHash: view.verifiedTreeHash,
       coveredPaths: event?.coveredPaths ?? [],
+      context,
     });
   }
 

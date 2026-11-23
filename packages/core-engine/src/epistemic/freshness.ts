@@ -1,4 +1,4 @@
-import type { Freshness } from "@chronos-ctx/shared-types";
+import type { Freshness, NodeStatus } from "@chronos-ctx/shared-types";
 
 /**
  * Tree-bound freshness (D2, ADR-0014).
@@ -100,6 +100,56 @@ export function computeFreshness(input: FreshnessInput): FreshnessResult {
     reason: `tree changed in ${touched.length} covered path${touched.length === 1 ? "" : "s"}`,
     changedCoveredPaths: touched,
   };
+}
+
+/**
+ * The tree inputs a reader must supply. Phase 1 callers inject them (tests,
+ * imports); Phase 2's shadow repository supplies the current tree and the
+ * evidence trees keyed by `verified_tree_hash`.
+ */
+export interface FreshnessContext {
+  currentTree: TreeState | null;
+  evidenceTrees: ReadonlyMap<string, TreeState>;
+}
+
+export interface NodeFreshnessInput {
+  status: NodeStatus;
+  verifiedTreeHash: string | null;
+  coveredPaths: readonly string[];
+  context: FreshnessContext | null;
+}
+
+/**
+ * One decision point for "may this node be shown as trusted?". Page-in and the
+ * capsule both call this, so they cannot disagree about the same node.
+ */
+export function nodeFreshness(input: NodeFreshnessInput): FreshnessResult {
+  if (input.status !== "verified") {
+    return {
+      value: "unknown",
+      reason: input.status === "deprecated" ? "node is deprecated" : "node is not verified",
+      changedCoveredPaths: [],
+    };
+  }
+  if (input.verifiedTreeHash === null) {
+    return {
+      value: "unknown",
+      reason: "no tree recorded with the evidence",
+      changedCoveredPaths: [],
+    };
+  }
+  if (input.context === null || input.context.currentTree === null) {
+    return { value: "unknown", reason: "no workspace attached", changedCoveredPaths: [] };
+  }
+  const evidenceTree = input.context.evidenceTrees.get(input.verifiedTreeHash);
+  if (evidenceTree === undefined) {
+    return { value: "unknown", reason: "tree snapshot unavailable", changedCoveredPaths: [] };
+  }
+  return computeFreshness({
+    evidenceTree,
+    currentTree: input.context.currentTree,
+    coveredPaths: input.coveredPaths,
+  });
 }
 
 /** Renders the marker the daemon must emit; it cannot be suppressed (ADR-0005). */

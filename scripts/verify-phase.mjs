@@ -132,7 +132,14 @@ const PHASES = {
         ],
       },
     },
-    { id: "1.6", assertion: "Capsule render determinism, no timestamp-like fields" },
+    {
+      id: "1.6",
+      assertion: "Capsule render determinism, no timestamp-like fields",
+      command: {
+        bin: "corepack",
+        args: ["pnpm", "-F", "@chronos-ctx/core-engine", "exec", "vitest", "run", "src/capsule"],
+      },
+    },
     {
       id: "1.7",
       assertion: "VERSION_CONFLICT returns current version + hash, no write",

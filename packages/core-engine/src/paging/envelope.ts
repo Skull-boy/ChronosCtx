@@ -16,7 +16,7 @@ import type {
 
 let cachedVersion: string | undefined;
 
-function engineVersion(): string {
+export function engineVersion(): string {
   if (cachedVersion !== undefined) return cachedVersion;
   try {
     const manifest = JSON.parse(

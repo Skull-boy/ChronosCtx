@@ -1606,12 +1606,15 @@ If `git` is absent or the filesystem rejects the shadow repo, `manifest-store.ts
 ```ts
 type ToolError = {
   code: "NODE_NOT_FOUND" | "VERSION_CONFLICT" | "EVIDENCE_REQUIRED" | "PATH_INVALID"
+      | "PATH_RESERVED" | "NODE_INVALID" | "NODE_OVERSIZED"
       | "PROJECT_NOT_FOUND" | "BRANCH_NOT_FOUND" | "CHECKPOINT_NOT_FOUND"
       | "PROJECT_BUSY" | "CHECKPOINT_PARTIAL" | "RESTORE_VERIFY_FAILED"
+      | "CAPSULE_INVALID"
       | "WORKTREE_DIRTY" | "WRITE_REJECTED_BRANCH_QUIESCED" | "BUDGET_EXCEEDED"
       | "ALIAS_REDIRECT" | "DAEMON_UNAVAILABLE" | "CONFLICT" | "EDGE_ORPHANED"
       | "EVIDENCE_STALE" | "HOST_NOT_ALLOWED" | "ORIGIN_NOT_ALLOWED"
-      | "UNSAFE_FILESYSTEM" | "PORT_RANGE_EXHAUSTED" | "UNSUPPORTED";
+      | "UNSAFE_FILESYSTEM" | "PORT_RANGE_EXHAUSTED" | "UNAUTHORIZED"
+      | "UNSUPPORTED" | "INTERNAL";
   message: string;                 // one line, safe to show the model
   retriable: boolean;
   retry_after_ms?: number;         // present for PROJECT_BUSY
@@ -2234,8 +2237,8 @@ Phase 0 output: `docs/phase0/REPORT.md` (verdict + numbers) and `docs/phase0/MET
 - [x] Two identities per §4.2.1: `snapshot_hash` over sorted `path\0version_id` (local) and `content_root` over sorted `path\0content_hash` (portable); `snapshots` table with `UNIQUE(project_id, snapshot_hash, kind)`, `idx_snap_content`, and `ON CONFLICT DO NOTHING`.
 - [x] Test that two states differing only in `version_id` share a `content_root` but produce two snapshot rows — proving local rollback is not collapsed by cross-device equivalence.
 - [x] DB-only checkpoint creation (`snapshot_kind='state_only'`) with parent chain, branch head update, single-source head.
-- [ ] Capsule v1 renderer + `render_hash`; **no timestamps in model-visible text**; freshness markers verified by snapshot tests.
-- [ ] Capsule parse/verify (`chronos capsule verify <file>`).
+- [x] Capsule v1 renderer + `render_hash`; **no timestamps in model-visible text**; freshness markers verified by snapshot tests.
+- [x] Capsule parse/verify (`chronos capsule verify <file>`).
 - [x] Dedupe proof test: 200 checkpoints with 3 distinct states → exactly 3 snapshot rows; `chronos stats --dedupe` reports the saving.
 
 #### 1.9 Daemon skeleton, ports, security

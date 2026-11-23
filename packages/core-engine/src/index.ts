@@ -1,3 +1,8 @@
+export * from "./capsule/export.js";
+export * from "./capsule/parse.js";
+export * from "./capsule/render.js";
+export * from "./capsule/types.js";
+export * from "./capsule/verify.js";
 export * from "./config.js";
 export * from "./content/hash.js";
 export * from "./content/snapshot.js";
@@ -23,6 +28,7 @@ export * from "./repositories/constraints.js";
 export * from "./repositories/edges.js";
 export * from "./repositories/nodes.js";
 export * from "./repositories/projects.js";
+export * from "./repositories/side-effects.js";
 export * from "./repositories/snapshots.js";
 export * from "./repositories/verification.js";
 

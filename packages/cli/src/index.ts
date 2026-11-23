@@ -1,7 +1,8 @@
 #!/usr/bin/env node
-import { readFileSync } from "node:fs";
+import { readFileSync, writeFileSync } from "node:fs";
 import {
   BootService,
+  CapsuleService,
   countCheckpoints,
   type Engine,
   getProjectById,
@@ -9,6 +10,7 @@ import {
   openEngine,
   PageInService,
   type Project,
+  verifyCapsuleDocument,
 } from "@chronos-ctx/core-engine";
 import { ChronosError, toToolErrorBody } from "@chronos-ctx/shared-types";
 import { Command } from "commander";
@@ -301,6 +303,90 @@ program
         : "OVER HARD CAP";
     process.stdout.write(`  ${verdict}\n`);
     if (!measurement.within_hard) process.exitCode = 1;
+  });
+
+const capsuleCommand = program
+  .command("capsule")
+  .description("render and verify re-hydration capsules");
+
+capsuleCommand
+  .command("export <project>")
+  .description("render a capsule from a checkpoint snapshot")
+  .option("-b, --branch <branch>", "branch name")
+  .option("-c, --checkpoint <id>", "checkpoint id (defaults to the branch head)")
+  .option("--max-tokens <n>", "token budget", (value: string) => Number(value))
+  .option("--objective <text>", "override the objective line")
+  .option("--out <file>", "write to a file (.json writes text + JSON)")
+  .option("--json", "machine-readable output", false)
+  .action(
+    async (
+      reference: string,
+      options: {
+        branch?: string;
+        checkpoint?: string;
+        maxTokens?: number;
+        objective?: string;
+        out?: string;
+        json: boolean;
+      },
+    ) => {
+      const engine = await openEngine();
+      try {
+        const project = await projectByRef(engine, reference);
+        const capsule = new CapsuleService({ db: engine.db });
+        const result = await capsule.export({
+          projectId: project.id,
+          ...(options.branch === undefined ? {} : { branch: options.branch }),
+          ...(options.checkpoint === undefined ? {} : { checkpointId: options.checkpoint }),
+          ...(options.maxTokens === undefined ? {} : { maxTokens: options.maxTokens }),
+          ...(options.objective === undefined ? {} : { objective: options.objective }),
+        });
+
+        if (options.out !== undefined) {
+          const asJson = options.out.toLowerCase().endsWith(".json");
+          writeFileSync(
+            options.out,
+            asJson
+              ? `${JSON.stringify({ text: result.text, capsule: result.capsule }, null, 2)}\n`
+              : result.text,
+            "utf8",
+          );
+        }
+
+        if (options.json) {
+          process.stdout.write(`${JSON.stringify({ ok: true, ...result }, null, 2)}\n`);
+        } else if (options.out === undefined) {
+          process.stdout.write(`${result.text}\n`);
+        } else {
+          process.stdout.write(
+            `capsule written to ${options.out} (${result.tokens} tokens, ${result.capsule.render_hash})\n`,
+          );
+        }
+      } finally {
+        engine.close();
+      }
+    },
+  );
+
+capsuleCommand
+  .command("verify <file>")
+  .description("recompute a capsule render hash and refuse a doctored file")
+  .option("--hash <hash>", "expected render hash")
+  .option("--json", "machine-readable output", false)
+  .action((file: string, options: { hash?: string; json: boolean }) => {
+    const content = readFileSync(file, "utf8");
+    const verification = verifyCapsuleDocument(content, options.hash ?? null);
+    if (options.json) {
+      process.stdout.write(`${JSON.stringify({ ...verification }, null, 2)}\n`);
+    } else {
+      process.stdout.write(`render_hash ${verification.computed}\n`);
+      if (verification.expected !== null) {
+        process.stdout.write(`expected    ${verification.expected}\n`);
+      }
+      if (verification.reason !== null) process.stdout.write(`${verification.reason}\n`);
+      process.stdout.write(verification.ok ? "ok\n" : "FAILED\n");
+    }
+    if (!verification.ok) process.exitCode = 1;
   });
 
 program

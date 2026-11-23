@@ -76,6 +76,7 @@ Phase 0 built one rig per question and ran it on two hosts. These are the number
 | Seven-tool reduced surface | **834 tokens** (target 900, hard 1,200) |
 | Lean four-tool surface | **507 tokens** (cap 600) |
 | `page_in`, 12 paths | **≤ 1,200 total**, envelope and schema share included |
+| Capsule v1, fixed sections and `render_hash` | **≤ 500 tokens** (144 in the reference run), byte-identical across renders |
 
 **Reading the numbers.** Windows figures are host-bound: real-time scanning and per-process cost dominate them, so the harness publishes a spawn floor beside every series. The cache-adjusted paging figure is negative because prompt caching reverses the raw saving, and both are always reported together. The token figures are measured against the actual schemas and fixtures; the paging model is an 8-turn scenario documented in the method.
 
@@ -95,19 +96,19 @@ Full method, hosts, confounds, and every gate: [`docs/phase0/REPORT.md`](docs/ph
 | Snapshots, dedupe, state-only checkpoints | ✅ |
 | CLI (`migrate`, `doctor`, `project`, `stats`) | ✅ |
 | Pager, boot index, tool-surface budget | ✅ |
-| Capsule v1 and render hash | next |
+| Capsule v1 and render hash | ✅ |
 | Daemon, loopback security, filesystem probe | next |
 | MCP surface, shadow git, rewind, forks | Phase 2 |
 
-Phase 1 has **12 of 18 gates** implemented. The gate runner is authoritative, and pending gates fail the run on purpose:
+Phase 1 has **13 of 18 gates** implemented. The gate runner is authoritative, and pending gates fail the run on purpose:
 
 ```bash
 node scripts/verify-phase.mjs --phase 0    # 2/2
-node scripts/verify-phase.mjs --phase 1    # 12/18 today
+node scripts/verify-phase.mjs --phase 1    # 13/18 today
 node scripts/verify-phase.mjs --list
 ```
 
-166 unit and property tests currently pass, including 1,000 randomized fork/commit interleavings, 200-checkpoint dedupe, 5,000 generated freshness histories, and a measured 300-node boot index.
+195 unit and property tests currently pass, including 1,000 randomized fork/commit interleavings, 200-checkpoint dedupe, 5,000 generated freshness histories, a measured 300-node boot index, and byte-identical capsule renders.
 
 ## Quickstart
 
@@ -153,10 +154,12 @@ node packages/cli/dist/index.js project fork toy-api redis-rate-limit
 node packages/cli/dist/index.js boot toy-api         # bounded index
 node packages/cli/dist/index.js page-in toy-api --path auth/jwt-spec db/schema
 node packages/cli/dist/index.js surface --profile full
+node packages/cli/dist/index.js capsule export toy-api --out capsule.md
+node packages/cli/dist/index.js capsule verify capsule.md   # recompute render_hash
 node packages/cli/dist/index.js stats --dedupe        # checkpoints vs snapshot rows
 ```
 
-State lives in `CHRONOS_HOME` (default `~/.chronos-ctx`). Network and synced drives are refused, because a WAL database on a sync client is a corruption generator.
+State lives in `CHRONOS_HOME` (default `~/.chronos-ctx`). The probe that refuses network and synced drives ships with the daemon slice; until then, do not place `CHRONOS_HOME` on a synced drive, because a WAL database on a sync client is a corruption generator.
 
 ## Repository layout
 
