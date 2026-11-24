@@ -83,7 +83,22 @@ const PHASES = {
         args: ["pnpm", "-F", "@chronos-ctx/core-engine", "test"],
       },
     },
-    { id: "1.2", assertion: "10k random commit sequences: zero unevidenced verified heads" },
+    {
+      id: "1.2",
+      assertion: "10k random commit sequences: zero unevidenced verified heads",
+      command: {
+        bin: "corepack",
+        args: [
+          "pnpm",
+          "-F",
+          "@chronos-ctx/core-engine",
+          "exec",
+          "vitest",
+          "run",
+          "src/epistemic/invariant.test.ts",
+        ],
+      },
+    },
     {
       id: "1.3",
       assertion: "Web-surface verified attempts rejected (12/12)",
@@ -274,13 +289,21 @@ const PHASES = {
         ],
       },
     },
-    { id: "1.15", assertion: "Coverage ≥85% statements in core-engine and shared-types" },
+    {
+      id: "1.15",
+      assertion: "Coverage ≥85% statements in core-engine and shared-types",
+      command: { bin: "node", args: ["scripts/gate-coverage.mjs"] },
+    },
     {
       id: "1.16",
       assertion: "chronos doctor on a clean machine is all green",
       command: { bin: "node", args: ["scripts/gate-doctor.mjs"] },
     },
-    { id: "1.17", assertion: "Release dry-run install contract" },
+    {
+      id: "1.17",
+      assertion: "Release dry-run install contract",
+      command: { bin: "node", args: ["scripts/build-release.mjs", "--dry-run"] },
+    },
     {
       id: "1.18",
       assertion: "Install/build trees match ADR-0025 budgets",

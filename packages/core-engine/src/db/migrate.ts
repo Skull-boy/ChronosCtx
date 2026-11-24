@@ -1,5 +1,6 @@
+import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
-import { dirname, join } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { ChronosError } from "@chronos-ctx/shared-types";
 import type { Database } from "./client.js";
@@ -36,7 +37,37 @@ export const MIGRATIONS: readonly Migration[] = [
   { version: 1, name: "init", file: "0001_init.sql" },
 ];
 
-const MIGRATIONS_DIR = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "migrations");
+/**
+ * The source build keeps SQL beside the package (`packages/core-engine/migrations`)
+ * while a bundled release keeps it beside the bundle (`<pkg>/migrations`). Both
+ * are legitimate, so resolve by probing the known layouts and fail loudly if
+ * none contains the first migration. `CHRONOS_MIGRATIONS_DIR` is an explicit
+ * escape hatch for unusual packaging.
+ */
+function resolveMigrationsDir(): string {
+  const here = dirname(fileURLToPath(import.meta.url));
+  const candidates = [
+    process.env.CHRONOS_MIGRATIONS_DIR,
+    join(here, "..", "..", "migrations"),
+    join(here, "..", "migrations"),
+    resolve(process.cwd(), "migrations"),
+  ];
+  for (const candidate of candidates) {
+    if (candidate !== undefined && existsSync(join(candidate, MIGRATIONS[0]?.file ?? ""))) {
+      return candidate;
+    }
+  }
+  throw new ChronosError(
+    "INTERNAL",
+    "migrations directory not found; the installation is incomplete",
+    {
+      hint: "Reinstall the package, or set CHRONOS_MIGRATIONS_DIR to the directory containing 0001_init.sql.",
+      details: { searched: candidates.filter((value): value is string => value !== undefined) },
+    },
+  );
+}
+
+const MIGRATIONS_DIR = resolveMigrationsDir();
 
 export function latestVersion(): number {
   const last = MIGRATIONS[MIGRATIONS.length - 1];

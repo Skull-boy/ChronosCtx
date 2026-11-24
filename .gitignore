@@ -21,6 +21,9 @@ docs/phase0/*.tmp
 # next to the Node binary (see CONTRIBUTING.md)
 .tools/
 
+# Release dry-run output (tarballs, signatures, SBOMs)
+release/
+
 *.log
 .env
 .env.*

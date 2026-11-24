@@ -1,5 +1,9 @@
 <div align="center">
 
+<p align="center">
+  <img src="./assets/orange.png" alt="ChronosCtx" width="180" />
+</p>
+
 <h1>ChronosCtx</h1>
 
 **A stateful context OS and time-travel harness for LLM coding agents.**
@@ -80,6 +84,9 @@ Phase 0 built one rig per question and ran it on two hosts. These are the number
 | Loopback guard | **8/8** Host/Origin rejection cases; exact CORS origin, never `*` |
 | Bearer tokens | scrypt-hashed at rest, scoped `read < write < admin`, expiring, revocable |
 | Filesystem probe | network and synced drives refused with `UNSAFE_FILESYSTEM` |
+| Verified-head invariant | **10,000** randomized commits, zero unevidenced verified heads |
+| Statement coverage | **87.6%** `core-engine`, **95.2%** `shared-types` (gate: 85%) |
+| Release dry-run | **1 package, 0 transitive, 0 lifecycle scripts**; SBOM emitted; signature verifies |
 
 **Reading the numbers.** Windows figures are host-bound: real-time scanning and per-process cost dominate them, so the harness publishes a spawn floor beside every series. The cache-adjusted paging figure is negative because prompt caching reverses the raw saving, and both are always reported together. The token figures are measured against the actual schemas and fixtures; the paging model is an 8-turn scenario documented in the method.
 
@@ -87,7 +94,7 @@ Full method, hosts, confounds, and every gate: [`docs/phase0/REPORT.md`](docs/ph
 
 ## Status
 
-**Phase 0 complete. Phase 1 (core state graph engine) in progress.**
+**Phase 0 complete. Phase 1 (core state graph engine) gates complete; Phase 1 exit artifacts and Phase 2 are next.**
 
 | Area | State |
 | --- | --- |
@@ -101,17 +108,18 @@ Full method, hosts, confounds, and every gate: [`docs/phase0/REPORT.md`](docs/ph
 | Pager, boot index, tool-surface budget | ✅ |
 | Capsule v1 and render hash | ✅ |
 | Daemon, loopback security, filesystem probe | ✅ |
+| Epistemic invariant under load, coverage gate, release dry-run | ✅ |
 | MCP surface, shadow git, rewind, forks | Phase 2 |
 
-Phase 1 has **15 of 18 gates** implemented. The gate runner is authoritative, and pending gates fail the run on purpose:
+Phase 1 has **18 of 18 gates** implemented. The gate runner is authoritative, and pending gates fail the run on purpose:
 
 ```bash
 node scripts/verify-phase.mjs --phase 0    # 2/2
-node scripts/verify-phase.mjs --phase 1    # 15/18 today
+node scripts/verify-phase.mjs --phase 1    # 18/18 today
 node scripts/verify-phase.mjs --list
 ```
 
-247 unit and property tests currently pass, including 1,000 randomized fork/commit interleavings, 200-checkpoint dedupe, 5,000 generated freshness histories, a measured 300-node boot index, byte-identical capsule renders, eight Host/Origin rejection cases, and the network/synced-drive probe.
+270 unit and property tests currently pass, including 10,000 randomized commit sequences with zero unevidenced verified heads, 1,000 randomized fork/commit interleavings, 200-checkpoint dedupe, 5,000 generated freshness histories, a measured 300-node boot index, byte-identical capsule renders, eight Host/Origin rejection cases, and the network/synced-drive probe.
 
 ## Quickstart
 

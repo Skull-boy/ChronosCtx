@@ -2180,7 +2180,7 @@ Phase 0 output: `docs/phase0/REPORT.md` (verdict + numbers) and `docs/phase0/MET
 - [x] `scripts/verify-phase.mjs` skeleton with `--phase=<n> --json` and a nonzero exit on failure.
 - [x] `scripts/bootstrap.mjs` (`corepack enable && pnpm i && pnpm build`) documented in README.
 - [x] `scripts/check-supply-chain.mjs` implementing the six rules in §3.5.3, wired as a required check.
-- [ ] `scripts/build-release.mjs`: bundle → stage per-platform packages → Cosign sign → emit CycloneDX SBOM; dry-run locally, publish only from CI.
+- [x] `scripts/build-release.mjs`: bundle → stage per-platform packages → Cosign sign → emit CycloneDX SBOM; dry-run locally, publish only from CI.
 - [x] `SECURITY.md` with a working private disclosure channel, the 72-hour acknowledgement SLA, and the supported-version table. A project PGP key and `security@` alias are release-blocking for 1.0 and are tracked in `docs/security/disclosure.md`; no placeholder fingerprint is published.
 - [x] Commit the Phase 0 report and fold any deltas into §4 before writing schema code.
 
@@ -2255,10 +2255,10 @@ Phase 0 output: `docs/phase0/REPORT.md` (verdict + numbers) and `docs/phase0/MET
 #### 1.10 Phase 1 exit artifacts
 - [ ] `examples/toy-api` seed: 40 nodes, 3 branches worth of history, 5 constraints, 1 aborted timeline, 6 edges.
 - [ ] Integration suite: 80+ tests across storage, gate, freshness, pager, capsule, snapshots, daemon.
-- [ ] Coverage ≥ 85% statements in `core-engine` and `shared-types`.
+- [x] Coverage ≥ 85% statements in `core-engine` and `shared-types`.
 - [ ] `docs/concepts/epistemics.mdx`, `docs/concepts/freshness.mdx`, `docs/reference/http-api.mdx` generated from zod.
 - [ ] `docs/supply-chain.mdx` published from §3.5, plus `chronos doctor --supply-chain --json` returning digest, lockfile hash, tree counts, script count, provenance status.
-- [ ] Release dry-run: `scripts/build-release.mjs --dry-run` produces a signed, SBOM-attested artifact that installs with **1 package, 0 transitive, 0 scripts** (gate 1.17).
+- [x] Release dry-run: `scripts/build-release.mjs --dry-run` produces a signed, SBOM-attested artifact that installs with **1 package, 0 transitive, 0 scripts** (gate 1.17). The local signature is an Ed25519 dry-run signature, not a release attestation; CI replaces it with Cosign keyless provenance.
 
 ---
 
@@ -2688,7 +2688,7 @@ node scripts/verify-phase.mjs --phase 1
 | 1.14 | Network/synced-drive probe | refused with `UNSAFE_FILESYSTEM` |
 | 1.15 | Coverage `core-engine` + `shared-types` | ≥ 85% stmts |
 | 1.16 | `chronos doctor` on a clean machine | all green, JSON schema valid |
-| 1.17 | Release dry-run install contract (tarball → `npx`) | 1 package, 0 transitive, 0 lifecycle scripts; provenance verifies |
+| 1.17 | Release dry-run install contract (tarball → `npx`) | 1 package, 0 transitive, 0 lifecycle scripts; SBOM emitted; signature verifies (local dry-run Ed25519; CI must use Cosign keyless provenance) |
 | 1.18 | Install-time tree on a clean machine matches the budget recorded in ADR-0025 (1 package / 0 transitive / 0 scripts) and the build-time tree does not exceed its ratchet | exact match, no unrecorded dependency |
 
 #### Phase 2 — Shadow git & time travel
@@ -2821,7 +2821,7 @@ node scripts/verify-phase.mjs --phase 6
 | 6.10 | Cold `npx` start in clean container | ≤ 90 s to first successful boot |
 | 6.11 | Security checklist + threat model reviewed | signed off |
 | 6.12 | Every README/docs number maps to Appendix D.2 + committed artifact | 100% (`check-claims` green) |
-| 6.13 | ADR index complete: 0001–0025 present, each with Context/Decision/Alternatives/Consequences | 25/25 |
+| 6.13 | ADR index complete: 0001-0028 present, each with Context/Decision/Alternatives/Consequences | 28/28 |
 | 6.14 | Spec, CLI reference, HTTP reference, capsule spec regenerated from source with 0 drift | 0 diffs |
 | 6.15 | Install-time tree on a clean machine: `shared-types` 0 deps; resolved packages / transitive / scripts | 1 / 0 / 0 |
 | 6.15b | Build-time tree within its recorded ratchet (ADR-0025) | no increase without an ADR |
@@ -2941,7 +2941,7 @@ These are properties of the environment, recorded so they are not re-litigated a
 | R22 | **npm supply-chain compromise** (maintainer takeover, worm, typosquat) reaches a user | **High** | **Critical** | `.npmrc` hardening + pnpm 10 script blocking, 72-hour cooldown, zero-resolution bundled artifact, trusted publishing (no tokens), provenance + Cosign, Actions pinned by SHA (§3.5) | 0/1/6 |
 | R23 | Shipped artifact drifts from the lockfile or a dependency gains a lifecycle script | Low | High | `check-supply-chain.mjs` as a required check, gates 6.15–6.19, `chronos doctor --supply-chain` | all |
 
-## Appendix B — ADR Index (written when the owning phase begins; all 26 required before the Phase 6 gate)
+## Appendix B - ADR Index (written when the owning phase begins; all 28 required before the Phase 6 gate)
 
 | ADR | Decision |
 | --- | --- |
@@ -2972,6 +2972,7 @@ These are properties of the environment, recorded so they are not re-litigated a
 | 0025 | Supply-chain model: zero install-time resolution, pnpm 10 script blocking + 72-hour cooldown, trusted publishing + provenance + Cosign, per-platform bundled packages, dependency budget and the Phase 0 swap decisions (§3.5) |
 | 0026 | Snapshot mechanism: watcher-driven incremental manifest as the hot path, git tree materialisation on commit/export, reconciliation scan on a separate budget; `checkout-index` on changed paths only. Written from the Phase 0 measurements (C17, A1/A2/A6) and supersedes the "`git add -A` per checkpoint" assumption in v1.2 |
 | 0027 | Daemon transport security: loopback `Host`/`Origin` guard before routing, exact CORS allowlist, positional `chr_<id>_<secret>` tokens hashed with `node:crypto` scrypt (argon2id rejected as a native install-time dependency), scoped/expiring/revocable records, and a network/synced-drive filesystem probe with `UNSAFE_FILESYSTEM` |
+| 0028 | Release artifact: one self-contained platform package per OS/arch, Vite/Rollup CJS bundle, native libSQL addon beside the bundle loaded via `LIBSQL_JS_DEV`, migration-directory probing, CycloneDX SBOM, and an Ed25519 dry-run signature with Cosign keyless provenance required in CI |
 
 ## Appendix C — Glossary
 

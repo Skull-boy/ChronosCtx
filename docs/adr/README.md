@@ -2,7 +2,7 @@
 
 One file per decision. Status is one of **Proposed**, **Accepted**, **Superseded** or **Rejected**. An accepted ADR is binding on the implementation; changing it requires a new ADR that names the evidence which changed.
 
-The canonical decision list is Appendix B of `roadmap.md`. This index tracks which files exist — a decision with no file is not yet written, and the Phase 6 gate requires all 27.
+The canonical decision list is Appendix B of `roadmap.md`. This index tracks which files exist - a decision with no file is not yet written, and the Phase 6 gate requires all 28.
 
 ## Phase 1 set
 
@@ -26,6 +26,7 @@ The canonical decision list is Appendix B of `roadmap.md`. This index tracks whi
 | [0025](0025-supply-chain-model.md) | Supply-chain model and the Phase 0 swap decisions | Accepted |
 | [0026](0026-snapshot-mechanism.md) | Incremental manifest snapshot mechanism | Accepted |
 | [0027](0027-daemon-transport-security.md) | Loopback `Host`/`Origin` guard, scrypt bearer tokens, filesystem probe | Accepted |
+| [0028](0028-release-artifact.md) | One self-contained platform package, Vite bundle, native addon beside the bundle, SBOM and dry-run signature | Accepted |
 
 ## Not yet written
 

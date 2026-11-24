@@ -84,6 +84,18 @@ describe("schema parity", () => {
     async (name, table) => {
       const pragma = await tableInfo(name);
       const config = getTableConfig(table);
+
+      // Foreign-key callbacks are lazy: nothing resolves them unless a query
+      // does. Resolve every one here, so a dangling target is a test failure
+      // and the mirror's FK graph is actually exercised.
+      for (const foreignKey of config.foreignKeys) {
+        const reference = foreignKey.reference();
+        const target = getTableConfig(reference.foreignTable).name;
+        expect(Object.keys(TABLES), `${name} references unknown table ${target}`).toContain(target);
+        expect(reference.columns).toHaveLength(reference.foreignColumns.length);
+        expect(reference.columns.length).toBeGreaterThan(0);
+      }
+
       const drizzle = new Map(config.columns.map((column) => [column.name, column]));
       const compositePk = new Set<string>(
         config.primaryKeys.flatMap((key) => key.columns.map((column) => column.name)),
