@@ -6,6 +6,9 @@ export * from "./capsule/verify.js";
 export * from "./config.js";
 export * from "./content/hash.js";
 export * from "./content/snapshot.js";
+export * from "./daemon/guard.js";
+export * from "./daemon/server.js";
+export * from "./daemon/tokens.js";
 export * from "./db/client.js";
 export * from "./db/migrate.js";
 export * from "./db/rows.js";
@@ -15,6 +18,7 @@ export * from "./domain/node.js";
 export * from "./engine.js";
 export * from "./epistemic/freshness.js";
 export * from "./epistemic/gate.js";
+export * from "./fs/probe.js";
 
 export * from "./paging/boot.js";
 export * from "./paging/budget.js";

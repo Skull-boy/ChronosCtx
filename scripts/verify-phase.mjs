@@ -242,8 +242,38 @@ const PHASES = {
         ],
       },
     },
-    { id: "1.13", assertion: "Loopback Host/Origin rejection suite (8/8)" },
-    { id: "1.14", assertion: "Network/synced-drive probe refuses with UNSAFE_FILESYSTEM" },
+    {
+      id: "1.13",
+      assertion: "Loopback Host/Origin rejection suite (8/8)",
+      command: {
+        bin: "corepack",
+        args: [
+          "pnpm",
+          "-F",
+          "@chronos-ctx/core-engine",
+          "exec",
+          "vitest",
+          "run",
+          "src/daemon/server.test.ts",
+        ],
+      },
+    },
+    {
+      id: "1.14",
+      assertion: "Network/synced-drive probe refuses with UNSAFE_FILESYSTEM",
+      command: {
+        bin: "corepack",
+        args: [
+          "pnpm",
+          "-F",
+          "@chronos-ctx/core-engine",
+          "exec",
+          "vitest",
+          "run",
+          "src/fs/probe.test.ts",
+        ],
+      },
+    },
     { id: "1.15", assertion: "Coverage ≥85% statements in core-engine and shared-types" },
     {
       id: "1.16",

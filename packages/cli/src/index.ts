@@ -1,15 +1,21 @@
 #!/usr/bin/env node
 import { readFileSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
 import {
   BootService,
   CapsuleService,
   countCheckpoints,
+  DaemonServer,
   type Engine,
   getProjectById,
+  isTokenScope,
   measureSurface,
   openEngine,
   PageInService,
   type Project,
+  probeFilesystem,
+  type TokenScope,
+  TokenStore,
   verifyCapsuleDocument,
 } from "@chronos-ctx/core-engine";
 import { ChronosError, toToolErrorBody } from "@chronos-ctx/shared-types";
@@ -48,6 +54,13 @@ async function projectByRef(engine: Engine, reference: string): Promise<Project>
     throw new ChronosError("PROJECT_NOT_FOUND", `project "${reference}" does not exist`);
   }
   return project;
+}
+
+function tokenStore(engine: Engine): TokenStore {
+  return new TokenStore({
+    file: join(engine.config.paths.tokens, "tokens.json"),
+    clock: engine.clock,
+  });
 }
 
 const program = new Command();
@@ -434,6 +447,199 @@ program
               `bytes=${row.snapshot_bytes}\n`,
           );
         }
+      }
+    } finally {
+      engine.close();
+    }
+  });
+
+const daemon = program.command("daemon").description("run and inspect the loopback daemon");
+
+daemon
+  .command("probe <path>")
+  .description("classify a path and report whether it is safe for CHRONOS_HOME")
+  .option("--json", "machine-readable output", false)
+  .action((path: string, options: { json: boolean }) => {
+    const result = probeFilesystem(path);
+    if (options.json) {
+      process.stdout.write(`${JSON.stringify({ ok: result.safe, ...result }, null, 2)}\n`);
+    } else {
+      process.stdout.write(`${result.path}\n`);
+      process.stdout.write(`  kind      ${result.kind}\n`);
+      process.stdout.write(`  fs_type   ${result.fs_type ?? "unknown"}\n`);
+      process.stdout.write(`  safe      ${result.safe ? "yes" : "NO"}\n`);
+      process.stdout.write(`  evidence  ${result.evidence}\n`);
+      if (!result.safe && result.remediation !== undefined) {
+        process.stdout.write(`  fix       ${result.remediation}\n`);
+      }
+    }
+    if (!result.safe) process.exitCode = 1;
+  });
+
+daemon
+  .command("serve")
+  .description("serve the loopback HTTP API in the foreground")
+  .option(
+    "--port <n>",
+    "port to bind (0 selects an ephemeral port)",
+    (value: string) => Number(value),
+    4870,
+  )
+  .option(
+    "--idle <seconds>",
+    "shut down after this many idle seconds (0 disables)",
+    (value: string) => Number(value),
+    0,
+  )
+  .option("--anonymous", "allow requests without a bearer token (local testing only)", false)
+  .option("--json", "machine-readable startup output", false)
+  .action(async (options: { port: number; idle: number; anonymous: boolean; json: boolean }) => {
+    const engine = await openEngine();
+    let server: DaemonServer | undefined;
+    try {
+      const tokens = tokenStore(engine);
+      if (!options.anonymous && (await tokens.list()).length === 0) {
+        throw new ChronosError("UNAUTHORIZED", "no daemon tokens exist", {
+          hint:
+            "run `chronos token issue --label local --scope read --scope write` first, " +
+            "or pass --anonymous for a throwaway loopback session",
+        });
+      }
+
+      server = new DaemonServer({
+        engine,
+        tokens,
+        allowAnonymous: options.anonymous,
+        port: options.port,
+        idleTimeoutMs: Math.max(0, options.idle) * 1000,
+        version: manifest.version,
+        logger: (event) => {
+          if (options.json) process.stdout.write(`${JSON.stringify(event)}\n`);
+        },
+      });
+      const { url, port } = await server.start();
+
+      if (options.json) {
+        process.stdout.write(
+          `${JSON.stringify({ ok: true, url, port, anonymous: options.anonymous })}\n`,
+        );
+      } else {
+        process.stdout.write(`chronos daemon listening on ${url}\n`);
+        if (options.anonymous) {
+          process.stdout.write(
+            "warning: anonymous loopback access is enabled; use only for local testing\n",
+          );
+        }
+      }
+
+      await new Promise<void>((resolve) => {
+        const shutdown = (): void => resolve();
+        process.once("SIGINT", shutdown);
+        process.once("SIGTERM", shutdown);
+      });
+    } finally {
+      if (server !== undefined) await server.stop();
+      engine.close();
+    }
+  });
+
+const token = program.command("token").description("issue, list and revoke daemon bearer tokens");
+
+token
+  .command("issue")
+  .description("issue a scoped token; the plaintext is printed once")
+  .option("--label <label>", "human-readable label", "local")
+  .option("--scope <scope...>", "scopes: read, write, admin", ["read"])
+  .option("--expires-in <days>", "expiry in days (omit for no expiry)", (value: string) =>
+    Number(value),
+  )
+  .option("--json", "machine-readable output", false)
+  .action(
+    async (options: { label: string; scope: string[]; expiresIn?: number; json: boolean }) => {
+      const scopes: TokenScope[] = options.scope.map((scope) => {
+        if (!isTokenScope(scope)) {
+          throw new ChronosError("INVALID_REQUEST", `unknown token scope "${scope}"`);
+        }
+        return scope;
+      });
+
+      const engine = await openEngine();
+      try {
+        const store = tokenStore(engine);
+        const now = engine.clock.now();
+        const expiresAt =
+          options.expiresIn === undefined ? null : now + options.expiresIn * 86_400_000;
+        if (expiresAt !== null && !(expiresAt > now)) {
+          throw new ChronosError(
+            "INVALID_REQUEST",
+            "--expires-in must be a positive number of days",
+          );
+        }
+
+        const issued = await store.issue({ label: options.label, scopes, expiresAt });
+        if (options.json) {
+          process.stdout.write(
+            `${JSON.stringify({ ok: true, token: issued.token, ...issued.metadata }, null, 2)}\n`,
+          );
+        } else {
+          process.stdout.write(`token ${issued.token}\n`);
+          process.stdout.write(`  id       ${issued.metadata.id}\n`);
+          process.stdout.write(`  scopes   ${issued.metadata.scopes.join(", ")}\n`);
+          process.stdout.write(
+            `  expires  ${
+              issued.metadata.expires_at === null
+                ? "never"
+                : new Date(issued.metadata.expires_at).toISOString()
+            }\n`,
+          );
+          process.stdout.write("\nstore this token now; it cannot be recovered\n");
+        }
+      } finally {
+        engine.close();
+      }
+    },
+  );
+
+token
+  .command("list")
+  .description("list token metadata without secrets")
+  .option("--json", "machine-readable output", false)
+  .action(async (options: { json: boolean }) => {
+    const engine = await openEngine();
+    try {
+      const rows = await tokenStore(engine).list();
+      if (options.json) {
+        process.stdout.write(`${JSON.stringify({ ok: true, tokens: rows }, null, 2)}\n`);
+      } else if (rows.length === 0) {
+        process.stdout.write("no tokens\n");
+      } else {
+        for (const row of rows) {
+          process.stdout.write(
+            `${row.id}  ${row.label}  ${row.scopes.join(",")}  ` +
+              `${row.expired ? "expired" : row.expires_at === null ? "never" : new Date(row.expires_at).toISOString()}\n`,
+          );
+        }
+      }
+    } finally {
+      engine.close();
+    }
+  });
+
+token
+  .command("revoke <id>")
+  .description("revoke a token by id")
+  .option("--json", "machine-readable output", false)
+  .action(async (id: string, options: { json: boolean }) => {
+    const engine = await openEngine();
+    try {
+      const revoked = await tokenStore(engine).revoke(id);
+      if (!revoked) {
+        throw new ChronosError("INVALID_REQUEST", `token ${id} does not exist`);
+      }
+      if (options.json) {
+        process.stdout.write(`${JSON.stringify({ ok: true, revoked: id }, null, 2)}\n`);
+      } else {
+        process.stdout.write(`revoked ${id}\n`);
       }
     } finally {
       engine.close();

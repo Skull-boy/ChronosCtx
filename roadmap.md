@@ -672,7 +672,7 @@ chronos-ctx/
 | Firewall proxy (**Phase 7**) | `127.0.0.1:4872` | harness API key passed through; no storage | Opt-in, passthrough-by-default; disabled unless `chronos firewall enable` is run |
 | Extension ↔ ChatGPT/Gemini/Claude/Qwen | DOM | user session | No network interception, no proxy, no credential capture |
 
-**`Host` and `Origin` are validated on every HTTP request (DNS-rebinding defence).** The server accepts only `Host: 127.0.0.1:<port>`, `localhost:<port>`, or `[::1]:<port>`; any other `Host` is rejected with `403 HOST_NOT_ALLOWED` before routing. `Origin` is checked against the extension id allowlist and `http://localhost:<port>`; requests with an `Origin` outside the list get no CORS headers and a `403 ORIGIN_NOT_ALLOWED`. WebSocket/SSE upgrades repeat both checks. Tokens are stored hashed (argon2id) with scopes and expiry, rotated by `chronos-ctx ext pair` and revocable by `chronos-ctx daemon revoke`.
+**`Host` and `Origin` are validated on every HTTP request (DNS-rebinding defence).** The server accepts only `Host: 127.0.0.1:<port>`, `localhost:<port>`, or `[::1]:<port>`; any other `Host` is rejected with `403 HOST_NOT_ALLOWED` before routing. `Origin` is checked against the extension id allowlist and `http://localhost:<port>`; requests with an `Origin` outside the list get no CORS headers and a `403 ORIGIN_NOT_ALLOWED`. WebSocket/SSE upgrades repeat both checks. Tokens are stored hashed (scrypt, ADR-0027) with scopes and expiry, rotated by `chronos-ctx ext pair` and revocable by `chronos-ctx daemon revoke`.
 
 Default binding is loopback. Binding to `0.0.0.0` requires `chronos-ctx daemon --allow-remote` **and** a printed warning naming what becomes reachable, because the state graph contains proprietary architecture notes. `--allow-remote` also forces TLS or an explicit `--insecure-http` acknowledgement.
 
@@ -1608,6 +1608,7 @@ type ToolError = {
   code: "NODE_NOT_FOUND" | "VERSION_CONFLICT" | "EVIDENCE_REQUIRED" | "PATH_INVALID"
       | "PATH_RESERVED" | "NODE_INVALID" | "NODE_OVERSIZED"
       | "PROJECT_NOT_FOUND" | "BRANCH_NOT_FOUND" | "CHECKPOINT_NOT_FOUND"
+      | "INVALID_REQUEST"
       | "PROJECT_BUSY" | "CHECKPOINT_PARTIAL" | "RESTORE_VERIFY_FAILED"
       | "CAPSULE_INVALID"
       | "WORKTREE_DIRTY" | "WRITE_REJECTED_BRANCH_QUIESCED" | "BUDGET_EXCEEDED"
@@ -2242,11 +2243,12 @@ Phase 0 output: `docs/phase0/REPORT.md` (verdict + numbers) and `docs/phase0/MET
 - [x] Dedupe proof test: 200 checkpoints with 3 distinct states → exactly 3 snapshot rows; `chronos stats --dedupe` reports the saving.
 
 #### 1.9 Daemon skeleton, ports, security
-- [ ] `node:http` app with a zod-validated route table serving `/v1/health`, `/v1/projects`, `/v1/tools/*` from the engine; OpenAPI generation from the zod schemas (Fastify is retired — see ADR-0025).
+- [x] `node:http` app with a zod-validated route table serving `/v1/health`, `/v1/projects`, and `/v1/tools/{context_boot,context_page_in,context_capsule}` from the engine (Fastify is retired — see ADR-0025).
+- [ ] Remaining `/v1/tools/*` routes and OpenAPI generation from the zod schemas.
 - [ ] IPC transport (named pipe / unix socket) + `daemon.lock` with PID/port/protocol; stale-lock recovery.
-- [ ] Loopback HTTP with bearer auth (argon2id-hashed tokens, scoped, expiring), CORS allowlist, `Host`/`Origin` validation, request size limits, idle shutdown.
+- [x] Loopback HTTP with bearer auth (scrypt-hashed tokens, scoped, expiring; ADR-0027), CORS allowlist, `Host`/`Origin` validation, request size limits, idle shutdown.
 - [ ] Per-user port allocation 4870–4899 with `run/daemon.json` discovery; `PORT_RANGE_EXHAUSTED` with owning PIDs; 4872 reserved.
-- [ ] Filesystem probe: refuse network/synced drives (`UNSAFE_FILESYSTEM`) for `CHRONOS_HOME`, object store, and workspace.
+- [x] Filesystem probe: refuse network/synced drives (`UNSAFE_FILESYSTEM`) for `CHRONOS_HOME`, object store, and workspace.
 - [ ] `chronos daemon start|stop|status|logs` + `chronos doctor` (DB integrity, pragmas, disk space, git presence, port collisions, fs type).
 - [ ] `docs/security/threat-model.md` v1: loopback-only default, DNS rebinding (`Host`/`Origin`), token theft/scoping, path traversal, prompt injection via captured content, synced-drive corruption, extension permission surface. Reviewed again in Phase 6.6 with the graph mutation model.
 
@@ -2964,11 +2966,12 @@ These are properties of the environment, recorded so they are not re-litigated a
 | 0019 | Enforcement tiers and capability registry (D10) |
 | 0020 | Side-effect ledger and the honest boundary of time travel (D8) |
 | 0021 | Conformance suite, protocol versioning, and the "standard" bar (D12) |
-| 0022 | Runtime security: loopback default, `Host`/`Origin` validation, scoped tokens, fs-type refusal |
+| 0022 | Runtime security: loopback default, `Host`/`Origin` validation, scoped tokens, fs-type refusal — **superseded by ADR-0027**, which records the scrypt substitution and the implemented guard/probe contract |
 | 0023 | Claims policy and the claims register as a build gate |
 | 0024 | Phase 0 spike methodology and kill criteria (written with the Phase 0 report; numbered last because ADR numbers are append-only and 0001–0024 pre-allocated the known decision set) |
 | 0025 | Supply-chain model: zero install-time resolution, pnpm 10 script blocking + 72-hour cooldown, trusted publishing + provenance + Cosign, per-platform bundled packages, dependency budget and the Phase 0 swap decisions (§3.5) |
 | 0026 | Snapshot mechanism: watcher-driven incremental manifest as the hot path, git tree materialisation on commit/export, reconciliation scan on a separate budget; `checkout-index` on changed paths only. Written from the Phase 0 measurements (C17, A1/A2/A6) and supersedes the "`git add -A` per checkpoint" assumption in v1.2 |
+| 0027 | Daemon transport security: loopback `Host`/`Origin` guard before routing, exact CORS allowlist, positional `chr_<id>_<secret>` tokens hashed with `node:crypto` scrypt (argon2id rejected as a native install-time dependency), scoped/expiring/revocable records, and a network/synced-drive filesystem probe with `UNSAFE_FILESYSTEM` |
 
 ## Appendix C — Glossary
 

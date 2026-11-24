@@ -2,7 +2,7 @@
 
 One file per decision. Status is one of **Proposed**, **Accepted**, **Superseded** or **Rejected**. An accepted ADR is binding on the implementation; changing it requires a new ADR that names the evidence which changed.
 
-The canonical decision list is Appendix B of `roadmap.md`. This index tracks which files exist — a decision with no file is not yet written, and the Phase 6 gate requires all 26.
+The canonical decision list is Appendix B of `roadmap.md`. This index tracks which files exist — a decision with no file is not yet written, and the Phase 6 gate requires all 27.
 
 ## Phase 1 set
 
@@ -25,7 +25,8 @@ The canonical decision list is Appendix B of `roadmap.md`. This index tracks whi
 | [0018](0018-atomic-checkpoint-transaction.md) | Atomic checkpoint transaction and `snapshot_kind` semantics | Accepted |
 | [0025](0025-supply-chain-model.md) | Supply-chain model and the Phase 0 swap decisions | Accepted |
 | [0026](0026-snapshot-mechanism.md) | Incremental manifest snapshot mechanism | Accepted |
+| [0027](0027-daemon-transport-security.md) | Loopback `Host`/`Origin` guard, scrypt bearer tokens, filesystem probe | Accepted |
 
 ## Not yet written
 
-0010 (rewind safety policy), 0011 (auto-fork on sync conflict), 0012 (extension scope), 0019 (enforcement tiers), 0020 (side-effect ledger), 0021 (conformance suite), 0022–0024, and any Phase 3+ decisions. Each is written when its owning phase begins, per Appendix B.
+0010 (rewind safety policy), 0011 (auto-fork on sync conflict), 0012 (extension scope), 0019 (enforcement tiers), 0020 (side-effect ledger), 0021 (conformance suite), 0023–0024, and any Phase 3+ decisions. Each is written when its owning phase begins, per Appendix B. **0022** (runtime security) is superseded by ADR-0027, which records the implemented guard, token and probe contract.
