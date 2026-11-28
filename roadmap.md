@@ -2247,7 +2247,7 @@ Phase 0 output: `docs/phase0/REPORT.md` (verdict + numbers) and `docs/phase0/MET
 - [ ] Remaining `/v1/tools/*` routes and OpenAPI generation from the zod schemas.
 - [ ] IPC transport (named pipe / unix socket) + `daemon.lock` with PID/port/protocol; stale-lock recovery.
 - [x] Loopback HTTP with bearer auth (scrypt-hashed tokens, scoped, expiring; ADR-0027), CORS allowlist, `Host`/`Origin` validation, request size limits, idle shutdown.
-- [ ] Per-user port allocation 4870–4899 with `run/daemon.json` discovery; `PORT_RANGE_EXHAUSTED` with owning PIDs; 4872 reserved.
+- [x] Per-user port allocation 4870–4899 with `run/daemon.json` discovery; `PORT_RANGE_EXHAUSTED` with owning PIDs; 4872 reserved.
 - [x] Filesystem probe: refuse network/synced drives (`UNSAFE_FILESYSTEM`) for `CHRONOS_HOME`, object store, and workspace.
 - [ ] `chronos daemon start|stop|status|logs` + `chronos doctor` (DB integrity, pragmas, disk space, git presence, port collisions, fs type).
 - [ ] `docs/security/threat-model.md` v1: loopback-only default, DNS rebinding (`Host`/`Origin`), token theft/scoping, path traversal, prompt injection via captured content, synced-drive corruption, extension permission surface. Reviewed again in Phase 6.6 with the graph mutation model.

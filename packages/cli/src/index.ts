@@ -1,22 +1,35 @@
 #!/usr/bin/env node
-import { readFileSync, writeFileSync } from "node:fs";
+import { spawn } from "node:child_process";
+import { closeSync, mkdirSync, openSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import {
+  acquireDaemonLock,
+  allocatePort,
   BootService,
   CapsuleService,
+  clearDaemonState,
   countCheckpoints,
   DaemonServer,
+  type DaemonState,
+  daemonFiles,
   type Engine,
   getProjectById,
+  isProcessAlive,
   isTokenScope,
+  loadConfig,
   measureSurface,
   openEngine,
   PageInService,
+  PORT_RANGE,
   type Project,
   probeFilesystem,
+  readDaemonLockFor,
+  readDaemonState,
+  releaseDaemonLock,
   type TokenScope,
   TokenStore,
   verifyCapsuleDocument,
+  writeDaemonState,
 } from "@chronos-ctx/core-engine";
 import { ChronosError, toToolErrorBody } from "@chronos-ctx/shared-types";
 import { Command } from "commander";
@@ -61,6 +74,39 @@ function tokenStore(engine: Engine): TokenStore {
     file: join(engine.config.paths.tokens, "tokens.json"),
     clock: engine.clock,
   });
+}
+
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
+}
+
+function readLogTail(file: string, count: number): string[] {
+  let text: string;
+  try {
+    text = readFileSync(file, "utf8");
+  } catch {
+    return [];
+  }
+  const lines = text.split(/\r?\n/u);
+  if (lines[lines.length - 1] === "") lines.pop();
+  return lines.slice(-Math.max(1, count));
+}
+
+async function waitForState(
+  home: string,
+  pid: number,
+  timeoutMs: number,
+): Promise<DaemonState | null> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    const state = await readDaemonState(home);
+    if (state !== null && state.pid === pid) return state;
+    if (!isProcessAlive(pid)) return null;
+    await delay(50);
+  }
+  return null;
 }
 
 const program = new Command();
@@ -486,6 +532,11 @@ daemon
     4870,
   )
   .option(
+    "--auto",
+    `allocate a port from the per-user range ${PORT_RANGE.start}-${PORT_RANGE.end}`,
+    false,
+  )
+  .option(
     "--idle <seconds>",
     "shut down after this many idle seconds (0 disables)",
     (value: string) => Number(value),
@@ -493,54 +544,320 @@ daemon
   )
   .option("--anonymous", "allow requests without a bearer token (local testing only)", false)
   .option("--json", "machine-readable startup output", false)
-  .action(async (options: { port: number; idle: number; anonymous: boolean; json: boolean }) => {
-    const engine = await openEngine();
-    let server: DaemonServer | undefined;
-    try {
-      const tokens = tokenStore(engine);
-      if (!options.anonymous && (await tokens.list()).length === 0) {
-        throw new ChronosError("UNAUTHORIZED", "no daemon tokens exist", {
-          hint:
-            "run `chronos token issue --label local --scope read --scope write` first, " +
-            "or pass --anonymous for a throwaway loopback session",
+  .action(
+    async (options: {
+      port: number;
+      auto: boolean;
+      idle: number;
+      anonymous: boolean;
+      json: boolean;
+    }) => {
+      const engine = await openEngine();
+      const home = engine.config.home;
+      let server: DaemonServer | undefined;
+      let locked = false;
+      let stateWritten = false;
+      try {
+        const tokens = tokenStore(engine);
+        if (!options.anonymous && (await tokens.list()).length === 0) {
+          throw new ChronosError("UNAUTHORIZED", "no daemon tokens exist", {
+            hint:
+              "run `chronos token issue --label local --scope read --scope write` first, " +
+              "or pass --anonymous for a throwaway loopback session",
+          });
+        }
+
+        const lock = await acquireDaemonLock(home, {
+          pid: process.pid,
+          protocol: "http",
+          created_at: engine.clock.now(),
         });
+        if (!lock.acquired) {
+          throw new ChronosError("CONFLICT", "another daemon holds run/daemon.lock", {
+            hint: "run `chronos daemon status`, or `chronos daemon stop` first",
+            details: { pid: lock.holder?.pid ?? null },
+          });
+        }
+        locked = true;
+
+        const startServer = async (
+          port: number,
+        ): Promise<{ server: DaemonServer; url: string; port: number }> => {
+          const candidate = new DaemonServer({
+            engine,
+            tokens,
+            allowAnonymous: options.anonymous,
+            port,
+            idleTimeoutMs: Math.max(0, options.idle) * 1000,
+            version: manifest.version,
+            logger: (event) => {
+              if (options.json) process.stdout.write(`${JSON.stringify(event)}\n`);
+            },
+          });
+          try {
+            const result = await candidate.start();
+            return { server: candidate, ...result };
+          } catch (error) {
+            await candidate.stop().catch(() => {});
+            throw error;
+          }
+        };
+
+        let started: { server: DaemonServer; url: string; port: number } | undefined;
+        if (options.auto) {
+          // Probing a port and binding it are separate steps, so retry when a
+          // racing process wins the port in between.
+          for (let attempt = 0; attempt < 8 && started === undefined; attempt += 1) {
+            const candidatePort = await allocatePort(PORT_RANGE);
+            try {
+              started = await startServer(candidatePort);
+            } catch (error) {
+              if (error instanceof ChronosError && error.code === "PORT_RANGE_EXHAUSTED") continue;
+              throw error;
+            }
+          }
+          if (started === undefined) {
+            throw new ChronosError("PORT_RANGE_EXHAUSTED", "no daemon port could be bound", {
+              details: { range: PORT_RANGE },
+            });
+          }
+        } else {
+          started = await startServer(options.port);
+        }
+
+        server = started.server;
+        const state: DaemonState = {
+          version: 1,
+          pid: process.pid,
+          protocol: "http",
+          port: started.port,
+          url: started.url,
+          ipc_path: null,
+          started_at: engine.clock.now(),
+          cli_version: manifest.version,
+        };
+        await writeDaemonState(home, state);
+        stateWritten = true;
+
+        if (options.json) {
+          process.stdout.write(
+            `${JSON.stringify({
+              ok: true,
+              url: started.url,
+              port: started.port,
+              pid: process.pid,
+              anonymous: options.anonymous,
+            })}\n`,
+          );
+        } else {
+          process.stdout.write(`chronos daemon listening on ${started.url}\n`);
+          if (options.anonymous) {
+            process.stdout.write(
+              "warning: anonymous loopback access is enabled; use only for local testing\n",
+            );
+          }
+        }
+
+        await new Promise<void>((resolve) => {
+          const shutdown = (): void => resolve();
+          process.once("SIGINT", shutdown);
+          process.once("SIGTERM", shutdown);
+        });
+      } finally {
+        if (server !== undefined) await server.stop().catch(() => {});
+        if (locked) {
+          if (stateWritten) await clearDaemonState(home);
+          await releaseDaemonLock(home);
+        }
+        engine.close();
       }
+    },
+  );
 
-      server = new DaemonServer({
-        engine,
-        tokens,
-        allowAnonymous: options.anonymous,
-        port: options.port,
-        idleTimeoutMs: Math.max(0, options.idle) * 1000,
-        version: manifest.version,
-        logger: (event) => {
-          if (options.json) process.stdout.write(`${JSON.stringify(event)}\n`);
-        },
-      });
-      const { url, port } = await server.start();
-
+daemon
+  .command("start")
+  .description("start a detached daemon and wait until it is listening")
+  .option("--json", "machine-readable output", false)
+  .action(async (options: { json: boolean }) => {
+    const config = loadConfig();
+    const existing = await readDaemonState(config.home);
+    if (existing !== null && isProcessAlive(existing.pid)) {
       if (options.json) {
         process.stdout.write(
-          `${JSON.stringify({ ok: true, url, port, anonymous: options.anonymous })}\n`,
+          `${JSON.stringify({ ok: true, running: true, already_running: true, ...existing })}\n`,
         );
       } else {
-        process.stdout.write(`chronos daemon listening on ${url}\n`);
-        if (options.anonymous) {
-          process.stdout.write(
-            "warning: anonymous loopback access is enabled; use only for local testing\n",
-          );
-        }
+        process.stdout.write(
+          `chronos daemon already running (pid ${existing.pid}) on ${existing.url ?? "unknown"}\n`,
+        );
       }
-
-      await new Promise<void>((resolve) => {
-        const shutdown = (): void => resolve();
-        process.once("SIGINT", shutdown);
-        process.once("SIGTERM", shutdown);
-      });
-    } finally {
-      if (server !== undefined) await server.stop();
-      engine.close();
+      return;
     }
+
+    const held = await readDaemonLockFor(config.home);
+    if (held !== null && isProcessAlive(held.pid)) {
+      throw new ChronosError("CONFLICT", `daemon lock is held by pid ${held.pid}`, {
+        hint: "Wait for it to finish starting, or run `chronos daemon status`.",
+        details: { pid: held.pid, protocol: held.protocol },
+      });
+    }
+
+    // Stale discovery or lock from a crashed daemon: clean before spawning.
+    await clearDaemonState(config.home);
+    await releaseDaemonLock(config.home);
+
+    const entry = process.argv[1];
+    if (entry === undefined) {
+      throw new ChronosError("INTERNAL", "cannot locate the CLI entry point to spawn");
+    }
+
+    const files = daemonFiles(config.home);
+    mkdirSync(join(config.home, "logs"), { recursive: true });
+    const child = ((): ReturnType<typeof spawn> => {
+      const logFd = openSync(files.log, "a");
+      try {
+        return spawn(process.execPath, [entry, "daemon", "serve", "--auto", "--json"], {
+          detached: true,
+          stdio: ["ignore", logFd, logFd],
+          windowsHide: true,
+          env: process.env,
+        });
+      } finally {
+        closeSync(logFd);
+      }
+    })();
+    child.unref();
+
+    const pid = child.pid;
+    if (pid === undefined) {
+      throw new ChronosError("INTERNAL", "the daemon process did not spawn");
+    }
+
+    const state = await waitForState(config.home, pid, 15_000);
+    if (state === null) {
+      const tail = readLogTail(files.log, 20);
+      throw new ChronosError("INTERNAL", "the daemon did not start", {
+        hint: `Inspect ${files.log}`,
+        details: { pid, log: files.log, tail },
+      });
+    }
+
+    if (options.json) {
+      process.stdout.write(`${JSON.stringify({ ok: true, running: true, ...state })}\n`);
+    } else {
+      process.stdout.write(`chronos daemon started (pid ${state.pid}) on ${state.url}\n`);
+    }
+  });
+
+daemon
+  .command("stop")
+  .description("stop a running daemon and clear its lock and discovery files")
+  .option("--json", "machine-readable output", false)
+  .action(async (options: { json: boolean }) => {
+    const config = loadConfig();
+    const state = await readDaemonState(config.home);
+
+    if (state === null || !isProcessAlive(state.pid)) {
+      const reason = state === null ? "not_running" : "stale_state";
+      await clearDaemonState(config.home);
+      await releaseDaemonLock(config.home);
+      if (options.json) {
+        process.stdout.write(`${JSON.stringify({ ok: true, stopped: false, reason })}\n`);
+      } else {
+        process.stdout.write(
+          state === null ? "chronos daemon is not running\n" : "cleared stale daemon state\n",
+        );
+      }
+      return;
+    }
+
+    try {
+      process.kill(state.pid, "SIGTERM");
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException).code;
+      if (code !== "ESRCH") {
+        throw new ChronosError("INTERNAL", `cannot signal daemon pid ${state.pid}`, {
+          cause: error,
+        });
+      }
+    }
+
+    const deadline = Date.now() + 5_000;
+    while (isProcessAlive(state.pid) && Date.now() < deadline) {
+      await delay(50);
+    }
+    if (isProcessAlive(state.pid)) {
+      throw new ChronosError("CONFLICT", `daemon pid ${state.pid} did not stop`, {
+        hint: "Terminate the process manually, then run `chronos daemon stop` again.",
+        details: { pid: state.pid },
+      });
+    }
+
+    await clearDaemonState(config.home);
+    await releaseDaemonLock(config.home);
+    if (options.json) {
+      process.stdout.write(`${JSON.stringify({ ok: true, stopped: true, pid: state.pid })}\n`);
+    } else {
+      process.stdout.write(`chronos daemon stopped (pid ${state.pid})\n`);
+    }
+  });
+
+daemon
+  .command("status")
+  .description("report whether a daemon is running and whether it answers /v1/health")
+  .option("--json", "machine-readable output", false)
+  .action(async (options: { json: boolean }) => {
+    const config = loadConfig();
+    const state = await readDaemonState(config.home);
+    const lock = await readDaemonLockFor(config.home);
+    const alive = state !== null && isProcessAlive(state.pid);
+
+    let health: unknown = null;
+    if (alive && state !== null && state.url !== null) {
+      try {
+        const response = await fetch(`${state.url}/v1/health`, {
+          signal: AbortSignal.timeout(1_500),
+        });
+        if (response.ok) health = await response.json();
+      } catch {
+        // A reachable PID with an unreachable port is reported as not running.
+      }
+    }
+
+    const running = alive && health !== null;
+    if (options.json) {
+      process.stdout.write(
+        `${JSON.stringify({ ok: true, running, state, lock, health }, null, 2)}\n`,
+      );
+    } else if (!alive) {
+      process.stdout.write("chronos daemon is not running\n");
+    } else if (state !== null) {
+      process.stdout.write(`chronos daemon running (pid ${state.pid})\n`);
+      process.stdout.write(`  url       ${state.url ?? "unknown"}\n`);
+      process.stdout.write(`  protocol  ${state.protocol}\n`);
+      process.stdout.write(`  health    ${health === null ? "unreachable" : "ok"}\n`);
+    }
+    if (!running) process.exitCode = 1;
+  });
+
+daemon
+  .command("logs")
+  .description("print the tail of the detached daemon log")
+  .option("-n, --lines <n>", "number of trailing lines", (value: string) => Number(value), 50)
+  .option("--json", "machine-readable output", false)
+  .action((options: { lines: number; json: boolean }) => {
+    const config = loadConfig();
+    const files = daemonFiles(config.home);
+    const lines = readLogTail(files.log, options.lines);
+    if (options.json) {
+      process.stdout.write(`${JSON.stringify({ ok: true, path: files.log, lines }, null, 2)}\n`);
+      return;
+    }
+    if (lines.length === 0) {
+      process.stdout.write("no daemon log yet\n");
+      return;
+    }
+    process.stdout.write(`${lines.join("\n")}\n`);
   });
 
 const token = program.command("token").description("issue, list and revoke daemon bearer tokens");

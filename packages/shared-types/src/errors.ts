@@ -54,6 +54,7 @@ const RETRIABLE: ReadonlySet<ToolErrorCode> = new Set<ToolErrorCode>([
   "PROJECT_BUSY",
   "DAEMON_UNAVAILABLE",
   "CHECKPOINT_PARTIAL",
+  "PORT_RANGE_EXHAUSTED",
 ]);
 
 const INVALID_PARAMS: ReadonlySet<ToolErrorCode> = new Set<ToolErrorCode>([

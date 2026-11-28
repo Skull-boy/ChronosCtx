@@ -7,6 +7,7 @@ export * from "./config.js";
 export * from "./content/hash.js";
 export * from "./content/snapshot.js";
 export * from "./daemon/guard.js";
+export * from "./daemon/lifecycle.js";
 export * from "./daemon/server.js";
 export * from "./daemon/tokens.js";
 export * from "./db/client.js";

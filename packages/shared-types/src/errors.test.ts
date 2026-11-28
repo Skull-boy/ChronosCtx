@@ -13,6 +13,7 @@ describe("ChronosError", () => {
     expect(new ChronosError("PROJECT_BUSY", "busy").retriable).toBe(true);
     expect(new ChronosError("DAEMON_UNAVAILABLE", "down").retriable).toBe(true);
     expect(new ChronosError("CHECKPOINT_PARTIAL", "partial").retriable).toBe(true);
+    expect(new ChronosError("PORT_RANGE_EXHAUSTED", "full").retriable).toBe(true);
     expect(new ChronosError("INTERNAL", "boom").retriable).toBe(false);
 
     expect(new ChronosError("PROJECT_BUSY", "busy", { retriable: false }).retriable).toBe(false);
